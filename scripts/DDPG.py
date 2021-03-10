@@ -215,7 +215,7 @@ rewards = []
 avg_rewards = []
 learningRates = []
 episodeLengths = []
-for episode in range(800):
+for episode in range(1000):
     t0 = time.time()
     state = env.reset()
     episode_reward = 0
