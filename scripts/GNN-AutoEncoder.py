@@ -237,7 +237,7 @@ optimizer = optim.Adam(itertools.chain(
                     decoderUpdateNetwork.parameters(), decoderOutputNetwork.parameters()),
                     lr, weight_decay=0)
 
-lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5)
+lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5, threshold=1e-2)
 criterion = nn.MSELoss(reduction='none')
 
 numTrainingBatches = int(np.ceil(X_train[0].shape[0] / batch_size))

@@ -226,7 +226,7 @@ lr = 5e-4
 optimizer = optim.Adam(itertools.chain(inputNetwork.parameters(), messageNetwork.parameters(), updateNetwork.parameters(), outputNetwork.parameters())
                        , lr=lr, weight_decay=0)
 
-lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5)
+lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5, threshold=1e-2)
 criterion = nn.MSELoss(reduction='none')
 
 zeroTensor = torch.zeros([1]).to(device)
