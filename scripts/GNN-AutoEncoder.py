@@ -3,7 +3,6 @@
 
 # In[1]:
 
-
 import numpy as np
 import torch.autograd
 import time
@@ -20,17 +19,12 @@ import dgl
 from graphenvs import HalfCheetahGraphEnv
 import itertools
 
-
-# In[2]:
-
-
 class Network(nn.Module):
     def __init__(
         self,
         input_size,
         output_size,
         hidden_sizes,
-        batch_size=256, # Needed only for batch norm
         with_batch_norm=False,
         activation=None
     ):
@@ -43,14 +37,12 @@ class Network(nn.Module):
 
         self.layers.append(nn.Linear(self.input_size, hidden_sizes[0]))
         if with_batch_norm:
-#             self.layers.append(nn.BatchNorm1d(batch_size))
             self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[0])))
         self.layers.append(nn.ReLU())
         
         for i in range(len(hidden_sizes) - 1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
             if with_batch_norm:
-#                 self.layers.append(nn.BatchNorm1d(batch_size))
                 self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[i+1])))
             self.layers.append(nn.ReLU())
         
@@ -66,10 +58,6 @@ class Network(nn.Module):
             out = layer(out)
             
         return out
-
-
-# In[3]:
-
 
 class GraphNeuralNetwork(nn.Module):
     def __init__(
@@ -168,18 +156,16 @@ class GraphNeuralNetwork(nn.Module):
             graph.ndata['input'] = nodeData
         
 
-
-# In[4]:
-
-
 states = {}
 actions = {}
 rewards = {}
 next_states = {}
 dones = {}
 env = {}
+trainingIdxs = [0,1,2,3,4,5]
 
-for morphIdx in range(7):
+
+for morphIdx in trainingIdxs:
 
     prefix = '../datasets/{}/'.format(morphIdx)
     
@@ -191,7 +177,6 @@ for morphIdx in range(7):
     
     env[morphIdx] = HalfCheetahGraphEnv(None)
     env[morphIdx].set_morphology(morphIdx)
-    env[morphIdx].reset()
 
 
 # In[5]:
@@ -202,7 +187,7 @@ X_train = {}
 Y_test = {}
 Y_train = {}
 
-for morphIdx in range(7):
+for morphIdx in trainingIdxs:
     X = states[morphIdx]
     Y = next_states[morphIdx]
     permutation = np.random.permutation(X.shape[0])
@@ -244,7 +229,7 @@ decoderOutputNetwork = Network(stateSize, 7, hidden_sizes, with_batch_norm=with_
 decoderGNN = GraphNeuralNetwork(decoderInputNetwork, decoderMessageNetwork, decoderUpdateNetwork, decoderOutputNetwork, numMessagePassingIterations, encoder=False).to(device)
 
 # Optimizer
-lr =  1e-3
+lr = 5e-4
 optimizer = optim.Adam(itertools.chain(
                     encoderInputNetwork.parameters(), encoderMessageNetwork.parameters(), 
                     encoderUpdateNetwork.parameters(), encoderOutputNetwork.parameters(),
@@ -252,13 +237,8 @@ optimizer = optim.Adam(itertools.chain(
                     decoderUpdateNetwork.parameters(), decoderOutputNetwork.parameters()),
                     lr, weight_decay=0)
 
-lr_lambda = lambda epoch: 0.7
-lr_scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda)
-criterion  = nn.MSELoss(reduction='none')
-
-
-# In[13]:
-
+lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5)
+criterion = nn.MSELoss(reduction='none')
 
 numTrainingBatches = int(np.ceil(X_train[0].shape[0] / batch_size))
 numTestingBatches = int(np.ceil(X_test[0].shape[0] / batch_size))
@@ -268,32 +248,12 @@ zeroTensor = torch.zeros([1]).to(device)
 trainLosses = {}
 testLosses = {}
 validLosses = {}
-trainingIdxs = [0,1,2,3,4,5,6]
 validationIdxs = []
 
-encoderInputNetworkGradients = []
-encoderMessageNetworkGradients = []
-encoderUpdateNetworkGradients = []
-encoderOutputNetworkGradients = []
-decoderInputNetworkGradients = []
-decoderMessageNetworkGradients = []
-decoderUpdateNetworkGradients = []
-decoderOutputNetworkGradients = []
-
-for morphIdx in range(7):
+for morphIdx in trainingIdxs:
     trainLosses[morphIdx] = []
     testLosses[morphIdx] = []
     validLosses[morphIdx] = []
-
-
-# In[14]:
-
-
-# encoderGNN.load_state_dict(torch.load('encoderGNN-normalized-time-contrastive.pt'))
-# decoderGNN.load_state_dict(torch.load('decoderGNN-normalized-time-contrastive.pt'))
-
-
-# In[ ]:
 
 
 for epoch in range(10):
@@ -305,7 +265,8 @@ for epoch in range(10):
         permutation = np.random.permutation(X_train[morphIdx].shape[0])
         X_train[morphIdx] = X_train[morphIdx][permutation]
         Y_train[morphIdx] = Y_train[morphIdx][permutation]
-    
+
+    s = 0
     with torch.no_grad():
         for morphIdx in trainingIdxs:
             testLosses[morphIdx].append(np.zeros(2))
@@ -338,12 +299,12 @@ for epoch in range(10):
                 # Compute average over nonzero entries in batch, result will be scalar
                 final_contrastive_loss = contrastive_loss.sum() / mask.sum()
 
-    #                 contrastive_loss_1 = torch.max(torch.zeros(1).to(device), criterion(latent_states[:, 0:batch_size, :], latent_states[:, batch_size:batch_size * 2, :]).mean() - maxSequentialDistance).mean()
-    #                 contrastive_loss_2 = torch.max(torch.zeros(1).to(device), minRandomDistance - criterion(latent_states[:, 0:batch_size, :], latent_states[:, 2 * batch_size: 3 * batch_size, :]).mean()).mean()
-
                 testLosses[morphIdx][-1][0] += autoencoder_loss.item() / numBatchesPerTrainingStep
                 testLosses[morphIdx][-1][1] += final_contrastive_loss.item() / numBatchesPerTrainingStep
             testLosses[morphIdx][-1] /= numTestingBatches-1
+            s += testLosses[morphIdx][-1].mean()
+
+    lr_scheduler.step(s)
 
     for morphIdx in trainingIdxs:
         print('Idx {} | Test {} : {}'.format(
@@ -392,15 +353,13 @@ for epoch in range(10):
                 mask = contrastive_loss != 0
                 # Compute average over nonzero entries in batch, result will be scalar
                 final_contrastive_loss = contrastive_loss.sum() / mask.sum()
-                
-                # contrastive_loss_1 = torch.max(torch.zeros(1).to(device), criterion(latent_states[:, 0:batch_size, :], latent_states[:, batch_size:batch_size * 2, :]).mean() - maxSequentialDistance).mean()
-                # contrastive_loss_2 = torch.max(torch.zeros(1).to(device), minRandomDistance - criterion(latent_states[:, 0:batch_size, :], latent_states[:, 2 * batch_size: 3 * batch_size, :]).mean()).mean()
-                
+
                 trainLosses[morphIdx][-1][0] += autoencoder_loss.item() / numBatchesPerTrainingStep
                 trainLosses[morphIdx][-1][1] += final_contrastive_loss.item() / numBatchesPerTrainingStep
             
                 stepLoss = autoencoder_loss + final_contrastive_loss
                 stepLoss /= (len(trainingIdxs) * numBatchesPerTrainingStep)
+
                 stepLoss.backward()
                         
         
@@ -411,55 +370,6 @@ for epoch in range(10):
                     morphIdx, np.round(trainLosses[morphIdx][-1][0], decimals=3), 
                     np.round(trainLosses[morphIdx][-1][1], decimals=3)))
 
-            
-            s = 0
-            for parameter in encoderInputNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            encoderInputNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in encoderMessageNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            encoderMessageNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in encoderUpdateNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            encoderUpdateNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in encoderOutputNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            encoderOutputNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in decoderInputNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            decoderInputNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in decoderMessageNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            decoderMessageNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in decoderUpdateNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            decoderUpdateNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in decoderOutputNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            decoderOutputNetworkGradients.append(s.item())
-
-            print('Gradients: Encoder Input {} | Encoder Message {} | Encoder  Update {} | Encoder Output {}'.format(
-                np.round(np.log10(encoderInputNetworkGradients[-1]), decimals=2), np.round(np.log10(encoderMessageNetworkGradients[-1]), decimals=2), np.round(np.log10(encoderUpdateNetworkGradients[-1]), decimals=2), np.round(np.log10(encoderOutputNetworkGradients[-1]), decimals=2)))    
-
-            print('Gradients: Decoder Input {} | Decoder Message {} | Decoder  Update {} | Decoder Output {}'.format(
-                np.round(np.log10(decoderInputNetworkGradients[-1]), decimals=2), np.round(np.log10(decoderMessageNetworkGradients[-1]), decimals=2), np.round(np.log10(decoderUpdateNetworkGradients[-1]), decimals=2), np.round(np.log10(decoderOutputNetworkGradients[-1]), decimals=2)))
-            
-            print()
-            
         optimizer.step()        
         optimizer.zero_grad()
         
@@ -475,18 +385,13 @@ for epoch in range(10):
     contrastive_loss_1 = None
     contrastive_loss_2 = None
     torch.cuda.empty_cache()
-        
-        
+
     t_final = time.time() - t0
 
     print('Epoch {} finished in {}'.format(epoch, np.round(time.time() - epoch_t0, decimals=1)))
-    lr_scheduler.step()
-    
-        
 
-
-# In[38]:
-
+torch.save(encoderGNN.state_dict(), 'encoderGNN.pt')
+torch.save(decoderGNN.state_dict(), 'decoderGNN.pt')
 
 fig, ax = plt.subplots(1, sharex=True)
 for morphIdx in trainingIdxs:
@@ -502,33 +407,7 @@ plt.ylabel('L2 Loss')
 plt.title('Testing Set Reconstruction Loss Per Morphology')
 plt.legend(trainingIdxs + validationIdxs)
 plt.savefig('time-contrastive-losses-alpha-0.25.jpg')
-plt.show()
 
-
-# In[39]:
-
-
-torch.save(encoderGNN.state_dict(), 'encoderGNN-normalized-time-contrastive-alpha-0.25.pt')
-torch.save(decoderGNN.state_dict(), 'decoderGNN-normalized-time-contrastive-alpha-0.25.pt')
-
-
-# In[ ]:
-
-
-with open('trainingParameters.txt', 'w') as file:
-    file.write('hidden_sizes ' + str(hidden_sizes) + '\n')
-    file.write('inputSize ' + str(inputSize) + '\n')
-    file.write('stateSize ' + str(stateSize) + '\n')
-    file.write('latentSize ' + str(latentSize) + '\n')
-    file.write('numMessagePassingIterations ' + str(numMessagePassingIterations) + '\n')
-    file.write('batch_size ' + str(batch_size) + '\n')
-    file.write('numBatchesPerTrainingStep ' + str(numBatchesPerTrainingStep) + '\n')
-    file.write('minRandomDistance ' + str(minRandomDistance) + '\n')
-    file.write('maxSequentialDistance ' + str(maxSequentialDistance) + '\n')
-    file.write('with_batch_norm ' + str(with_batch_norm) + '\n')
-
-
-# In[ ]:
 
 
 

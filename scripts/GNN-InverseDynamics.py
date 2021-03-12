@@ -5,40 +5,20 @@
 
 
 import numpy as np
-import gym
-from collections import deque
-import random
 import torch.autograd
-import os
 import time
 import torch.optim as optim
 import torch.nn as nn
-import torch.nn.functional as F 
-from torch.autograd import Variable
-import sys
-import pickle
 import matplotlib.pyplot as plt
-import pybullet as p 
-from torch.utils.data.dataloader import DataLoader
-import pybullet 
-import pybullet_envs.gym_pendulum_envs 
-import pybullet_envs.gym_locomotion_envs
 if torch.cuda.is_available():
     device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc. 
     print("Running on the GPU")
 else:
     device = torch.device("cpu")
     print("Running on the CPU")
-import networkx as nx
-from tqdm import tqdm
 import dgl
-import morphsim as m
 from graphenvs import HalfCheetahGraphEnv
 import itertools
-
-
-# In[2]:
-
 
 class Network(nn.Module):
     def __init__(
@@ -46,7 +26,6 @@ class Network(nn.Module):
         input_size,
         output_size,
         hidden_sizes,
-        batch_size=256, # Needed only for batch norm
         with_batch_norm=False,
         activation=None
     ):
@@ -59,14 +38,12 @@ class Network(nn.Module):
 
         self.layers.append(nn.Linear(self.input_size, hidden_sizes[0]))
         if with_batch_norm:
-#             self.layers.append(nn.BatchNorm1d(batch_size))
             self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[0])))
         self.layers.append(nn.ReLU())
         
         for i in range(len(hidden_sizes) - 1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
             if with_batch_norm:
-#                 self.layers.append(nn.BatchNorm1d(batch_size))
                 self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[i+1])))
             self.layers.append(nn.ReLU())
         
@@ -82,9 +59,6 @@ class Network(nn.Module):
             out = layer(out)
             
         return out
-
-
-# In[3]:
 
 
 class GraphNeuralNetwork(nn.Module):
@@ -124,8 +98,6 @@ class GraphNeuralNetwork(nn.Module):
     
     def outputFunction(self, nodes):
         
-#         numNodes, batchSize, stateSize = graph.ndata['state'].shape
-#         return self.outputNetwork.forward(graph.ndata['state'])
         return {'output': self.outputNetwork(nodes.data['state'])}
 
 
@@ -182,6 +154,7 @@ class GraphNeuralNetwork(nn.Module):
 
 # In[4]:
 
+trainingIdxs = [0,1,2,3,4,5]
 
 states = {}
 actions = {}
@@ -190,7 +163,7 @@ next_states = {}
 dones = {}
 env = {}
 
-for morphIdx in range(7):
+for morphIdx in trainingIdxs:
 
     prefix = '../datasets/{}/'.format(morphIdx)
     
@@ -213,7 +186,7 @@ X_train = {}
 Y_test = {}
 Y_train = {}
 
-for morphIdx in range(7):
+for morphIdx in trainingIdxs:
     X = np.concatenate((states[morphIdx], next_states[morphIdx]), -1)
     Y = actions[morphIdx]
     permutation = np.random.permutation(X.shape[0])
@@ -239,56 +212,35 @@ batch_size = 2048
 with_batch_norm=True
 numBatchesPerTrainingStep = 1
 
-inputNetwork = Network(inputSize, stateSize, hidden_sizes, batch_size, with_batch_norm)
-messageNetwork = Network(stateSize + inputSize + 1, messageSize, hidden_sizes, batch_size, with_batch_norm, nn.Tanh)
-updateNetwork = Network(stateSize + messageSize, stateSize, hidden_sizes, batch_size, with_batch_norm)
-outputNetwork = Network(stateSize, outputSize, hidden_sizes, batch_size, with_batch_norm, nn.Tanh)
-
-lr = 1e-3
+inputNetwork = Network(inputSize, stateSize, hidden_sizes, with_batch_norm)
+messageNetwork = Network(stateSize + inputSize + 1, messageSize, hidden_sizes, with_batch_norm, nn.Tanh)
+updateNetwork = Network(stateSize + messageSize, stateSize, hidden_sizes, with_batch_norm)
+outputNetwork = Network(stateSize, outputSize, hidden_sizes, with_batch_norm, nn.Tanh)
 
 numTrainingBatches = int(np.ceil(X_train[0].shape[0] / batch_size))
 numTestingBatches = int(np.ceil(X_test[0].shape[0] / batch_size))
 
 gnn = GraphNeuralNetwork(inputNetwork, messageNetwork, updateNetwork, outputNetwork, numMessagePassingIterations).to(device)
 
+lr = 5e-4
 optimizer = optim.Adam(itertools.chain(inputNetwork.parameters(), messageNetwork.parameters(), updateNetwork.parameters(), outputNetwork.parameters())
-                       , lr, weight_decay=0)
+                       , lr=lr, weight_decay=0)
 
-
-lmbda = lambda epoch: 0.7
-lr_scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lmbda)
-criterion  = nn.MSELoss(reduction='none')
-
-
-# In[29]:
-
-
-numTrainingBatches = int(np.ceil(X_train[0].shape[0] / batch_size))
-numTestingBatches = int(np.ceil(X_test[0].shape[0] / batch_size))
-
+lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5)
+criterion = nn.MSELoss(reduction='none')
 
 zeroTensor = torch.zeros([1]).to(device)
 trainLosses = {}
 testLosses = {}
 validLosses = {}
-trainingIdxs = [0,1,2,3,4,5,6]
 validationIdxs = []
 
-inputNetworkGradients = []
-messageNetworkGradients = []
-updateNetworkGradients = []
-outputNetworkGradients = []
-
-for morphIdx in range(7):
+for morphIdx in trainingIdxs:
     trainLosses[morphIdx] = []
     testLosses[morphIdx] = []
     validLosses[morphIdx] = []
 
-
-# In[30]:
-
-
-for epoch in range(5):
+for epoch in range(15):
     
     print('Starting Epoch {}'.format(epoch))
     epoch_t0 = time.time()
@@ -299,9 +251,8 @@ for epoch in range(5):
         Y_train[morphIdx] = Y_train[morphIdx][permutation]
         
     stepLoss = None
-    encoderGraph = []
-    decoderGraph = []
-    
+
+    s = 0
     with torch.no_grad():
 
         for morphIdx in trainingIdxs:
@@ -320,6 +271,10 @@ for epoch in range(5):
                 testLosses[morphIdx][-1] += stepLoss.cpu().detach()
 
             testLosses[morphIdx][-1] /= numTestingBatches-1
+            s += testLosses[morphIdx][-1].mean()
+
+    lr_scheduler.step(s)
+
             
     for morphIdx in trainingIdxs:
         print('Idx {} | Test {}'.format(
@@ -359,33 +314,7 @@ for epoch in range(5):
             for morphIdx in trainingIdxs:
                 print('Idx {} | Train {}'.format(
                     morphIdx, np.round(trainLosses[morphIdx][-1], decimals=3)))
-            
-            s = 0
-            for parameter in inputNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            inputNetworkGradients.append(s.item())
 
-            s = 0
-            for parameter in messageNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            messageNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in updateNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            updateNetworkGradients.append(s.item())
-
-            s = 0
-            for parameter in outputNetwork.parameters():
-                s += torch.abs(parameter.grad).mean()
-            outputNetworkGradients.append(s.item())
-
-            print('Gradients: Input {} | Message {} | Update {} | Output {}'.format(
-                np.round(np.log10(inputNetworkGradients[-1]), decimals=2), np.round(np.log10(messageNetworkGradients[-1]), decimals=2), 
-                np.round(np.log10(updateNetworkGradients[-1]), decimals=2), np.round(np.log10(outputNetworkGradients[-1]), decimals=2)))    
-            
-            print()
-            
         optimizer.step()        
         optimizer.zero_grad()       
         
@@ -396,18 +325,13 @@ for epoch in range(5):
         y_hat = None
         g = None
         torch.cuda.empty_cache()
-
         
         t_final = time.time() - t0
 
-
     print('Epoch {} finished in {}'.format(epoch, np.round(time.time() - epoch_t0, decimals=1)))
-    lr_scheduler.step()
-        
 
 
-# In[14]:
-
+torch.save(gnn.state_dict(), 'inverseModel-GNN.pt')
 
 # Cell for producing Per Node Loss for each Morphology
 
@@ -426,12 +350,6 @@ for morphIdx in range(7):
     plt.ylabel('Smooth L1 Loss')
     plt.title('Per Node Loss Morphology {}, Train = {}'.format(morphIdx, morphIdx in trainingIdxs))
     plt.savefig('per-node-loss-{}.jpg'.format(morphIdx))
-    plt.show()
-    
-
-
-# In[15]:
-
 
 fig, ax = plt.subplots(1, sharex=True)
 for morphIdx in trainingIdxs:
@@ -447,33 +365,6 @@ plt.title('Mean Node Loss per Morphology')
 plt.grid(True)
 plt.legend(trainingIdxs + validationIdxs)
 plt.savefig('mean-node-losses.jpg')
-plt.show()
-
-
-# In[16]:
-
-
-torch.save(gnn.state_dict(), 'inverseModel-GNN.pt')
-
-
-# In[36]:
-
-
-fig, ax = plt.subplots(1, sharex=True)
-ax.plot(range(len(inputNetworkGradients)), np.log10(inputNetworkGradients))
-ax.plot(range(len(messageNetworkGradients)), np.log10(messageNetworkGradients))
-ax.plot(range(len(updateNetworkGradients)), np.log10(updateNetworkGradients))
-ax.plot(range(len(outputNetworkGradients)), np.log10(outputNetworkGradients))
-plt.xlabel('Training Steps')
-plt.ylabel('Mean Absolute Gradient (Log 10)')
-plt.title('Gradient Magnitudes Over Time')
-plt.legend(['Input Network', 'Message Network', 'Update Network', ' Output Network'])
-plt.savefig('gradients.jpg')
-plt.show()
-
-
-# In[ ]:
-
 
 
 
