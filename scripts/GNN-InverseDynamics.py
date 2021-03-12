@@ -151,8 +151,42 @@ class GraphNeuralNetwork(nn.Module):
         else:
             graph.ndata['state'] = nodeData
 
+def save_weights_and_graph():
+    torch.save(gnn.state_dict(), 'inverseModel-GNN.pt')
 
-# In[4]:
+    # Cell for producing Per Node Loss for each Morphology
+
+    for morphIdx in range(7):
+        if morphIdx in trainingIdxs:
+            lossArr = torch.stack(testLosses[morphIdx]).T
+        else:
+            lossArr = torch.stack(validLosses[morphIdx]).T
+
+        fig, ax = plt.subplots(1, sharex=True)
+        for i in range(lossArr.shape[0]):
+            ax.plot(range(lossArr.shape[1]), lossArr[i])
+        plt.legend(range(lossArr.shape[0]))
+        plt.xlabel('Training Step')
+        plt.grid()
+        plt.ylabel('Smooth L1 Loss')
+        plt.title('Per Node Loss Morphology {}, Train = {}'.format(morphIdx, morphIdx in trainingIdxs))
+        plt.savefig('per-node-loss-{}.jpg'.format(morphIdx))
+
+    fig, ax = plt.subplots(1, sharex=True)
+    for morphIdx in trainingIdxs:
+        lossArr = torch.stack(testLosses[morphIdx]).mean(dim=1)
+        ax.plot(range(lossArr.shape[0]), lossArr)
+    for morphIdx in validationIdxs:
+        lossArr = torch.stack(validLosses[morphIdx]).mean(dim=1)
+        ax.plot(range(lossArr.shape[0]), lossArr)
+
+    plt.xlabel('Training Step')
+    plt.ylabel('Smooth L1 Loss')
+    plt.title('Mean Node Loss per Morphology')
+    plt.grid(True)
+    plt.legend(trainingIdxs + validationIdxs)
+    plt.savefig('mean-node-losses.jpg')
+
 
 trainingIdxs = [0,1,2,3,4,5]
 
@@ -165,7 +199,7 @@ env = {}
 
 for morphIdx in trainingIdxs:
 
-    prefix = '../datasets/{}/'.format(morphIdx)
+    prefix = 'datasets/{}/'.format(morphIdx)
     
     states[morphIdx] = np.load(prefix + 'states_array.npy')
     actions[morphIdx] = np.load(prefix + 'actions_array.npy')
@@ -240,9 +274,9 @@ for morphIdx in trainingIdxs:
     testLosses[morphIdx] = []
     validLosses[morphIdx] = []
 
-for epoch in range(15):
+for epoch in range(20):
     
-    print('Starting Epoch {}'.format(epoch))
+    print('Starting Epoch {}'.format(epoch), flush=True)
     epoch_t0 = time.time()
     
     for morphIdx in trainingIdxs:
@@ -278,7 +312,7 @@ for epoch in range(15):
             
     for morphIdx in trainingIdxs:
         print('Idx {} | Test {}'.format(
-            morphIdx, np.round(testLosses[morphIdx][-1], decimals=3)))
+            morphIdx, np.round(testLosses[morphIdx][-1], decimals=3)), flush=True)
 
 
     
@@ -310,10 +344,10 @@ for epoch in range(15):
                 stepLoss.mean().backward()
         
         if batch % 200 == 0:
-            print('Batch {} in {}s'.format(batch, np.round(time.time() - t0, decimals=1)))
+            print('Batch {} in {}s'.format(batch, np.round(time.time() - t0, decimals=1)), flush=True)
             for morphIdx in trainingIdxs:
                 print('Idx {} | Train {}'.format(
-                    morphIdx, np.round(trainLosses[morphIdx][-1], decimals=3)))
+                    morphIdx, np.round(trainLosses[morphIdx][-1], decimals=3)), flush=True)
 
         optimizer.step()        
         optimizer.zero_grad()       
@@ -328,43 +362,10 @@ for epoch in range(15):
         
         t_final = time.time() - t0
 
-    print('Epoch {} finished in {}'.format(epoch, np.round(time.time() - epoch_t0, decimals=1)))
+    print('Epoch {} finished in {}'.format(epoch, np.round(time.time() - epoch_t0, decimals=1)), flush=True)
+    save_weights_and_graph()
 
 
-torch.save(gnn.state_dict(), 'inverseModel-GNN.pt')
-
-# Cell for producing Per Node Loss for each Morphology
-
-for morphIdx in range(7):
-    if morphIdx in trainingIdxs:
-        lossArr = torch.stack(testLosses[morphIdx]).T
-    else:
-        lossArr = torch.stack(validLosses[morphIdx]).T
-    
-    fig, ax = plt.subplots(1, sharex=True)
-    for i in range(lossArr.shape[0]):
-        ax.plot(range(lossArr.shape[1]), lossArr[i])
-    plt.legend(range(lossArr.shape[0]))
-    plt.xlabel('Training Step')
-    plt.grid()
-    plt.ylabel('Smooth L1 Loss')
-    plt.title('Per Node Loss Morphology {}, Train = {}'.format(morphIdx, morphIdx in trainingIdxs))
-    plt.savefig('per-node-loss-{}.jpg'.format(morphIdx))
-
-fig, ax = plt.subplots(1, sharex=True)
-for morphIdx in trainingIdxs:
-    lossArr = torch.stack(testLosses[morphIdx]).mean(dim=1)
-    ax.plot(range(lossArr.shape[0]), lossArr)
-for morphIdx in validationIdxs:
-    lossArr = torch.stack(validLosses[morphIdx]).mean(dim=1)
-    ax.plot(range(lossArr.shape[0]), lossArr)
-
-plt.xlabel('Training Step')
-plt.ylabel('Smooth L1 Loss')
-plt.title('Mean Node Loss per Morphology')
-plt.grid(True)
-plt.legend(trainingIdxs + validationIdxs)
-plt.savefig('mean-node-losses.jpg')
 
 
 

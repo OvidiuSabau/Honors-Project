@@ -165,9 +165,29 @@ env = {}
 trainingIdxs = [0,1,2,3,4,5]
 
 
+def save_weights_and_graph():
+    torch.save(encoderGNN.state_dict(), 'encoderGNN.pt')
+    torch.save(decoderGNN.state_dict(), 'decoderGNN.pt')
+
+    fig, ax = plt.subplots(1, sharex=True)
+    for morphIdx in trainingIdxs:
+        lossArr = np.sum(np.array(testLosses[morphIdx]), 1)
+        ax.plot(range(lossArr.shape[0] - 1), lossArr[1:])
+    for morphIdx in validationIdxs:
+        lossArr = np.sum(np.array(validLosses[morphIdx]), 1)
+        ax.plot(range(lossArr.shape[0]), lossArr)
+
+    plt.grid(True)
+    plt.xlabel('Epoch')
+    plt.ylabel('L2 Loss')
+    plt.title('Testing Set Reconstruction Loss Per Morphology')
+    plt.legend(trainingIdxs + validationIdxs)
+    plt.savefig('time-contrastive-losses.jpg')
+
+
 for morphIdx in trainingIdxs:
 
-    prefix = '../datasets/{}/'.format(morphIdx)
+    prefix = 'datasets/{}/'.format(morphIdx)
     
     states[morphIdx] = np.load(prefix + 'states_array.npy')
     actions[morphIdx] = np.load(prefix + 'actions_array.npy')
@@ -256,9 +276,9 @@ for morphIdx in trainingIdxs:
     validLosses[morphIdx] = []
 
 
-for epoch in range(10):
+for epoch in range(20):
     
-    print('Starting Epoch {}'.format(epoch))
+    print('Starting Epoch {}'.format(epoch), flush=True)
     epoch_t0 = time.time()
     
     for morphIdx in trainingIdxs:
@@ -308,7 +328,7 @@ for epoch in range(10):
 
     for morphIdx in trainingIdxs:
         print('Idx {} | Test {} : {}'.format(
-            morphIdx, np.round(testLosses[morphIdx][-1][0], decimals=3), np.round(testLosses[morphIdx][-1][1], decimals=3)))
+            morphIdx, np.round(testLosses[morphIdx][-1][0], decimals=3), np.round(testLosses[morphIdx][-1][1], decimals=3)), flush=True)
     
     stepLoss = None
 
@@ -364,49 +384,33 @@ for epoch in range(10):
                         
         
         if batch % 200 == 0:
-            print('Batch {} in {}s'.format(batch, np.round(time.time() - t0, decimals=1)))
+            print('Batch {} in {}s'.format(batch, np.round(time.time() - t0, decimals=1)), flush=True)
             for morphIdx in trainingIdxs:
                 print('Idx {} | Train {} : {}'.format(
                     morphIdx, np.round(trainLosses[morphIdx][-1][0], decimals=3), 
-                    np.round(trainLosses[morphIdx][-1][1], decimals=3)))
+                    np.round(trainLosses[morphIdx][-1][1], decimals=3)), flush=True)
 
         optimizer.step()        
         optimizer.zero_grad()
         
-    # Dereference variables to release memory
-    stepLoss = None
-    encoder_graph = None
-    decoder_graph = None
-    encoderInput = None
-    latent_states = None
-    normalized_latent_states = None
-    current_state_reconstruction = None
-    autoencoder_loss = None
-    contrastive_loss_1 = None
-    contrastive_loss_2 = None
-    torch.cuda.empty_cache()
+        # Dereference variables to release memory
+        stepLoss = None
+        encoder_graph = None
+        decoder_graph = None
+        encoderInput = None
+        latent_states = None
+        normalized_latent_states = None
+        current_state_reconstruction = None
+        autoencoder_loss = None
+        contrastive_loss_1 = None
+        contrastive_loss_2 = None
+        torch.cuda.empty_cache()
 
-    t_final = time.time() - t0
+        t_final = time.time() - t0
 
-    print('Epoch {} finished in {}'.format(epoch, np.round(time.time() - epoch_t0, decimals=1)))
+    print('Epoch {} finished in {}'.format(epoch, np.round(time.time() - epoch_t0, decimals=1)), flush=True)
+    save_weights_and_graph()
 
-torch.save(encoderGNN.state_dict(), 'encoderGNN.pt')
-torch.save(decoderGNN.state_dict(), 'decoderGNN.pt')
-
-fig, ax = plt.subplots(1, sharex=True)
-for morphIdx in trainingIdxs:
-    lossArr = np.sum(np.array(testLosses[morphIdx]), 1)
-    ax.plot(range(lossArr.shape[0]-1), lossArr[1:])
-for morphIdx in validationIdxs:
-    lossArr = np.sum(np.array(validLosses[morphIdx]), 1)
-    ax.plot(range(lossArr.shape[0]), lossArr)
-
-plt.grid(True)
-plt.xlabel('Epoch')
-plt.ylabel('L2 Loss')
-plt.title('Testing Set Reconstruction Loss Per Morphology')
-plt.legend(trainingIdxs + validationIdxs)
-plt.savefig('time-contrastive-losses-alpha-0.25.jpg')
 
 
 
