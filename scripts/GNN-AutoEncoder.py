@@ -263,7 +263,7 @@ decoderOutputNetwork = Network(stateSize, 7, hidden_sizes, with_batch_norm=with_
 decoderGNN = GraphNeuralNetwork(decoderInputNetwork, decoderMessageNetwork, decoderUpdateNetwork, decoderOutputNetwork, numMessagePassingIterations, encoder=False).to(device)
 
 # Optimizer
-lr = 1e-4
+lr = 5e-4
 optimizer = optim.Adam(itertools.chain(
                     encoderInputNetwork.parameters(), encoderMessageNetwork.parameters(), 
                     encoderUpdateNetwork.parameters(), encoderOutputNetwork.parameters(),
@@ -271,7 +271,7 @@ optimizer = optim.Adam(itertools.chain(
                     decoderUpdateNetwork.parameters(), decoderOutputNetwork.parameters()),
                     lr, weight_decay=0)
 
-lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5, threshold=1e-2)
+lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=5e-6, threshold=1e-2)
 criterion = nn.MSELoss(reduction='none')
 
 
