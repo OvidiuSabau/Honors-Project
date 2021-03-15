@@ -18,6 +18,7 @@ else:
 import dgl
 from graphenvs import HalfCheetahGraphEnv
 import itertools
+import os
 
 class Network(nn.Module):
     def __init__(
@@ -162,14 +163,25 @@ rewards = {}
 next_states = {}
 dones = {}
 env = {}
-trainingIdxs = [0,1,2,3,4,5]
+
+idx = 0
+trainingIdxs = [idx]
+
+save_dir = 'perMorph-GNN-AE/' + str(idx) + '/'
 
 
-def save_weights_and_graph():
+def save_weights_and_graph(save_dir):
+
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+
     torch.save(encoderGNN.state_dict(), 'encoderGNN.pt')
     torch.save(decoderGNN.state_dict(), 'decoderGNN.pt')
 
+    np.save('testLosses', np.stack(testLosses[morphIdx]))
+    np.save('trainLosses', np.stack(trainLosses[morphIdx]))
     fig, ax = plt.subplots(1, sharex=True)
+
     for morphIdx in trainingIdxs:
         lossArr = np.sum(np.array(testLosses[morphIdx]), 1)
         ax.plot(range(lossArr.shape[0] - 1), lossArr[1:])
@@ -249,7 +261,7 @@ decoderOutputNetwork = Network(stateSize, 7, hidden_sizes, with_batch_norm=with_
 decoderGNN = GraphNeuralNetwork(decoderInputNetwork, decoderMessageNetwork, decoderUpdateNetwork, decoderOutputNetwork, numMessagePassingIterations, encoder=False).to(device)
 
 # Optimizer
-lr = 5e-4
+lr = 1e-4
 optimizer = optim.Adam(itertools.chain(
                     encoderInputNetwork.parameters(), encoderMessageNetwork.parameters(), 
                     encoderUpdateNetwork.parameters(), encoderOutputNetwork.parameters(),
@@ -268,7 +280,6 @@ zeroTensor = torch.zeros([1]).to(device)
 trainLosses = {}
 testLosses = {}
 validLosses = {}
-validationIdxs = []
 
 for morphIdx in trainingIdxs:
     trainLosses[morphIdx] = []
@@ -297,8 +308,8 @@ for epoch in range(20):
 
                 current_states = X_test[morphIdx][batch_ * batch_size:(batch_+1)*batch_size]
                 next_states = Y_test[morphIdx][batch_ * batch_size:(batch_+1)*batch_size]
-                random_indexes = np.random.choice(X_train[0].shape[0],size=batch_size, replace=False)
-                random_states = X_train[morphIdx][random_indexes]
+                random_indexes = np.random.choice(X_test[0].shape[0],size=batch_size, replace=False)
+                random_states = X_test[morphIdx][random_indexes]
 
                 encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
 
@@ -384,11 +395,9 @@ for epoch in range(20):
                         
         
         if batch % 200 == 0:
-            print('Batch {} in {}s'.format(batch, np.round(time.time() - t0, decimals=1)), flush=True)
+            print('Batch {} in {:.1f}s'.format(batch, time.time() - t0), flush=True)
             for morphIdx in trainingIdxs:
-                print('Idx {} | Train {} : {}'.format(
-                    morphIdx, np.round(trainLosses[morphIdx][-1][0], decimals=3), 
-                    np.round(trainLosses[morphIdx][-1][1], decimals=3)), flush=True)
+                print('Idx {} | Train {:.3f} : {:.3f}'.format(morphIdx, trainLosses[morphIdx][-1][0], trainLosses[morphIdx][-1][1]), flush=True)
 
         optimizer.step()        
         optimizer.zero_grad()
@@ -408,8 +417,8 @@ for epoch in range(20):
 
         t_final = time.time() - t0
 
-    print('Epoch {} finished in {}'.format(epoch, np.round(time.time() - epoch_t0, decimals=1)), flush=True)
-    save_weights_and_graph()
+    print('Epoch {} finished in {:.1f}'.format(epoch, time.time() - epoch_t0), flush=True)
+    save_weights_and_graph(save_dir=save_dir)
 
 
 
