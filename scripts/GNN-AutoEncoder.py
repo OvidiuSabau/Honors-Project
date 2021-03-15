@@ -167,7 +167,7 @@ env = {}
 idx = 0
 trainingIdxs = [idx]
 
-save_dir = 'perMorph-GNN-AE/' + str(idx) + '/'
+save_dir = 'models/GNN-AE-4-latent/' + str(idx) + '/'
 
 
 def save_weights_and_graph(save_dir):
@@ -175,25 +175,27 @@ def save_weights_and_graph(save_dir):
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
-    torch.save(encoderGNN.state_dict(), 'encoderGNN.pt')
-    torch.save(decoderGNN.state_dict(), 'decoderGNN.pt')
+    torch.save(encoderGNN.state_dict(), save_dir + 'encoderGNN.pt')
+    torch.save(decoderGNN.state_dict(), save_dir + 'decoderGNN.pt')
 
-    np.save('testLosses', np.stack(testLosses[morphIdx]))
-    np.save('trainLosses', np.stack(trainLosses[morphIdx]))
     fig, ax = plt.subplots(1, sharex=True)
 
     for morphIdx in trainingIdxs:
         lossArr = np.sum(np.array(testLosses[morphIdx]), 1)
         ax.plot(range(lossArr.shape[0] - 1), lossArr[1:])
-    for morphIdx in validationIdxs:
-        lossArr = np.sum(np.array(validLosses[morphIdx]), 1)
-        ax.plot(range(lossArr.shape[0]), lossArr)
+        np.save(save_dir + 'testLosses', np.stack(testLosses[morphIdx]))
+        np.save(save_dir + 'trainLosses', np.stack(trainLosses[morphIdx]))
+
+    # for morphIdx in validationIdxs:
+    #     lossArr = np.sum(np.array(validLosses[morphIdx]), 1)
+    #     ax.plot(range(lossArr.shape[0]), lossArr)
 
     plt.grid(True)
     plt.xlabel('Epoch')
-    plt.ylabel('L2 Loss')
+    plt.ylabel('Average L2 Loss')
     plt.title('Testing Set Reconstruction Loss Per Morphology')
-    plt.legend(trainingIdxs + validationIdxs)
+    if len(trainingIdxs) > 1:
+        plt.legend(trainingIdxs)
     plt.savefig('time-contrastive-losses.jpg')
 
 
@@ -272,9 +274,9 @@ optimizer = optim.Adam(itertools.chain(
 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5, threshold=1e-2)
 criterion = nn.MSELoss(reduction='none')
 
-numTrainingBatches = int(np.ceil(X_train[0].shape[0] / batch_size))
-numTestingBatches = int(np.ceil(X_test[0].shape[0] / batch_size))
 
+numTrainingBatches = int(np.ceil(X_train[trainingIdxs[0]].shape[0] / batch_size))
+numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))
 
 zeroTensor = torch.zeros([1]).to(device)
 trainLosses = {}
@@ -308,7 +310,7 @@ for epoch in range(20):
 
                 current_states = X_test[morphIdx][batch_ * batch_size:(batch_+1)*batch_size]
                 next_states = Y_test[morphIdx][batch_ * batch_size:(batch_+1)*batch_size]
-                random_indexes = np.random.choice(X_test[0].shape[0],size=batch_size, replace=False)
+                random_indexes = np.random.choice(X_test[trainingIdxs[0]].shape[0], size=batch_size, replace=False)
                 random_states = X_test[morphIdx][random_indexes]
 
                 encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
@@ -363,7 +365,7 @@ for epoch in range(20):
                                 
                 current_states = X_train[morphIdx][(batch+batchOffset) * batch_size:(batch+batchOffset+1)*batch_size]
                 next_states = Y_train[morphIdx][(batch+batchOffset) * batch_size:(batch+batchOffset+1)*batch_size]
-                random_indexes = np.random.choice(X_train[0].shape[0],size=current_states.shape[0], replace=False)
+                random_indexes = np.random.choice(X_train[trainingIdxs[0]].shape[0],size=current_states.shape[0], replace=False)
                 random_states = X_train[morphIdx][random_indexes]
                 
                 encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
