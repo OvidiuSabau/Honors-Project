@@ -179,7 +179,8 @@ trainingIdxs = [idx]
 
 # trainingIdxs = [0,1,2,3,4,5]
 
-save_dir = 'models/inverseDynamics-multiGNN/' + str(idx) + '/'
+# save_dir = 'models/inverseDynamics-multi-no-sigmoid/'
+save_dir = 'models/inverseDynamics-with-sigmoid/' + str(idx) + '/'
 
 states = {}
 actions = {}
@@ -190,7 +191,7 @@ env = {}
 
 for morphIdx in trainingIdxs:
 
-    prefix = '../datasets/{}/'.format(morphIdx)
+    prefix = 'datasets/{}/'.format(morphIdx)
     
     states[morphIdx] = np.load(prefix + 'states_array.npy')
     actions[morphIdx] = np.load(prefix + 'actions_array.npy')
