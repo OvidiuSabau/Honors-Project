@@ -169,9 +169,9 @@ def save_weights_and_graph(save_dir):
 
     for morphIdx in trainingIdxs:
         np.save(save_dir + '/actionTrainLosses.npy', np.stack(actionTrainLosses[morphIdx]))
-        np.save('/sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
-        np.save('/actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
-        np.save('/sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
+        np.save(save_dir +'/sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
+        np.save(save_dir +'/actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
+        np.save(save_dir +'/sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
 
 
 idx = 0
