@@ -247,8 +247,8 @@ zeroTensor = torch.zeros([batch_size]).to(device)
 oneTensor = torch.ones([batch_size]).to(device)
 binaryLossWeighing = 1e-5
 
-numTrainingBatches = int(np.ceil(X_train[0].shape[0] / batch_size))
-numTestingBatches = int(np.ceil(X_test[0].shape[0] / batch_size))
+numTrainingBatches = int(np.ceil(X_train[trainingIdxs[0]].shape[0] / batch_size))
+numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))
 
 actionTrainLosses = {}
 actionTestLosses = {}
