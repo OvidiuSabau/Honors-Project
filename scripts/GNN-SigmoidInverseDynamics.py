@@ -240,7 +240,7 @@ lr = 5e-4
 optimizer = optim.Adam(itertools.chain(inputNetwork.parameters(), messageNetwork.parameters(), updateNetwork.parameters(), outputNetwork.parameters())
                        , lr=lr, weight_decay=0)
 
-lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5, threshold=1e-2)
+lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=5e-6, threshold=1e-2)
 l2Loss = nn.MSELoss(reduction='none')
 binaryLoss = nn.BCELoss()
 zeroTensor = torch.zeros([batch_size]).to(device)
@@ -306,11 +306,15 @@ for epoch in range(15):
 
             actionTestLosses[morphIdx][-1] /= numTrainingBatches-1
             sigmoidTestLosses[morphIdx][-1] /= numTrainingBatches-1
-            
+
+    s = 0
     for morphIdx in trainingIdxs:
         print('Test Idx {} | Actions Loss {} \nSigmoid L&A {}\n'.format(
             morphIdx, np.round(actionTestLosses[morphIdx][-1], decimals=3), np.round(sigmoidTestLosses[morphIdx][-1], decimals=3)))
-    
+        s += actionTestLosses[morphIdx][-1].mean()
+
+    lr_scheduler.step(s)
+
     for batch in range(0, numTrainingBatches-1, numBatchesPerTrainingStep):
                 
         t0 = time.time()
