@@ -53,8 +53,6 @@ class Network(nn.Module):
             
         return out
 
-idx = 0
-
 def save_weights_and_graph(save_dir):
 
     if not os.path.isdir(save_dir):
@@ -67,7 +65,8 @@ def save_weights_and_graph(save_dir):
     np.save(save_dir +'/testLosses.npy', np.stack(testLosses))
 
 
-save_dir = 'models/MLP-inverseDynamics/with-contrastive/' + str(idx) + '/'
+idx = 0
+save_dir = 'models/MLP-inverseDynamics/no-contrastive/' + str(idx) + '/'
 
 prefix = 'datasets/' + str(idx) + '/'
 states = np.load(prefix + 'states_array.npy')
@@ -129,9 +128,6 @@ zeroTensor = torch.zeros([1]).to(device)
 
 trainLosses = []
 testLosses = []
-
-
-# In[ ]:
 
 
 for epoch in range(50):
