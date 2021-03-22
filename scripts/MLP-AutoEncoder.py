@@ -112,7 +112,7 @@ decoder = Network(input_size=latentSize, output_size=inputSize, hidden_sizes=hid
 lr = 5e-4
 optimizer = optim.Adam(itertools.chain(encoder.parameters(), decoder.parameters()), lr=lr)
 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5)
-criterion  = nn.MSELoss(reduction='none')
+criterion = nn.MSELoss(reduction='none')
 
 
 # In[28]:
@@ -165,7 +165,7 @@ for epoch in range(50):
             # get 0-1 matrix which is True if entry is not 0
             mask = contrastive_loss != 0
             # Compute average over nonzero entries in batch, result will be scalar
-            final_contrastive_loss = contrastive_loss.sum() / mask.sum()
+            final_contrastive_loss = contrastive_loss.sum() / (mask.sum() + 1e-8)
 
             testLosses[-1][0] += autoencoder_loss.item()
             testLosses[-1][1] += final_contrastive_loss.item()
