@@ -181,10 +181,8 @@ def save_weights_and_graph(save_dir):
     fig, ax = plt.subplots(1, sharex=True)
 
     for morphIdx in trainingIdxs:
-        lossArr = np.sum(np.array(testLosses[morphIdx]), 1)
-        ax.plot(range(lossArr.shape[0] - 1), lossArr[1:])
-        np.save(save_dir + 'testLosses', np.stack(testLosses[morphIdx]))
-        np.save(save_dir + 'trainLosses', np.stack(trainLosses[morphIdx]))
+        np.save(save_dir + str(morphIdx) + '-testLosses', np.stack(testLosses[morphIdx]))
+        np.save(save_dir + str(morphIdx) + '-trainLosses', np.stack(trainLosses[morphIdx]))
 
     # for morphIdx in validationIdxs:
     #     lossArr = np.sum(np.array(validLosses[morphIdx]), 1)
@@ -365,7 +363,7 @@ for epoch in range(20):
                                 
                 current_states = X_train[morphIdx][(batch+batchOffset) * batch_size:(batch+batchOffset+1)*batch_size]
                 next_states = Y_train[morphIdx][(batch+batchOffset) * batch_size:(batch+batchOffset+1)*batch_size]
-                random_indexes = np.random.choice(X_train[trainingIdxs[0]].shape[0],size=current_states.shape[0], replace=False)
+                random_indexes = np.random.choice(X_train[trainingIdxs[0]].shape[0], size=current_states.shape[0], replace=False)
                 random_states = X_train[morphIdx][random_indexes]
                 
                 encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
