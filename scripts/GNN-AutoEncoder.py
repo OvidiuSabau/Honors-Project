@@ -173,20 +173,14 @@ save_dir = 'models/GNN-AE-4-latent/' + str(idx) + '/'
 def save_weights_and_graph(save_dir):
 
     if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir, exist_ok=True)
 
     torch.save(encoderGNN.state_dict(), save_dir + 'encoderGNN.pt')
     torch.save(decoderGNN.state_dict(), save_dir + 'decoderGNN.pt')
 
-    fig, ax = plt.subplots(1, sharex=True)
-
     for morphIdx in trainingIdxs:
         np.save(save_dir + str(morphIdx) + '-testLosses', np.stack(testLosses[morphIdx]))
         np.save(save_dir + str(morphIdx) + '-trainLosses', np.stack(trainLosses[morphIdx]))
-
-    # for morphIdx in validationIdxs:
-    #     lossArr = np.sum(np.array(validLosses[morphIdx]), 1)
-    #     ax.plot(range(lossArr.shape[0]), lossArr)
 
     plt.grid(True)
     plt.xlabel('Epoch')
@@ -239,7 +233,7 @@ hidden_sizes = [256, 256]
 inputSize = 13
 stateSize = 64
 messageSize = 64
-latentSize = 4
+latentSize = 2
 numMessagePassingIterations = 6
 batch_size = 1024
 numBatchesPerTrainingStep = 1
