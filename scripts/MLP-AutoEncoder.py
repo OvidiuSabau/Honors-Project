@@ -65,7 +65,7 @@ def save_weights_and_graph(save_dir):
     np.save(save_dir +'/testLosses.npy', np.stack(testLosses))
 
 
-idx = 0
+idx = 3
 save_dir = 'models/MLP-inverseDynamics/no-contrastive/' + str(idx) + '/'
 
 prefix = 'datasets/' + str(idx) + '/'

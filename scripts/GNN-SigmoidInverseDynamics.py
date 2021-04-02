@@ -174,12 +174,13 @@ def save_weights_and_graph(save_dir):
         np.save(save_dir +'/sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
 
 
-idx = 0
-trainingIdxs = [idx]
+# idx = 0
+# trainingIdxs = [idx]
 
-# trainingIdxs = [0,1,2,3,4,5]
+trainingIdxs = [0,1,2,3,4,5]
 
-save_dir = 'models/inverseDynamics-multiGNN/' + str(idx) + '/'
+save_dir = 'models/inverseDynamics-multi-with-sigmoid/'
+# save_dir = 'models/inverseDynamics-with-sigmoid/' + str(idx) + '/'
 
 states = {}
 actions = {}
@@ -190,7 +191,7 @@ env = {}
 
 for morphIdx in trainingIdxs:
 
-    prefix = '../datasets/{}/'.format(morphIdx)
+    prefix = 'datasets/{}/'.format(morphIdx)
     
     states[morphIdx] = np.load(prefix + 'states_array.npy')
     actions[morphIdx] = np.load(prefix + 'actions_array.npy')
@@ -245,7 +246,7 @@ l2Loss = nn.MSELoss(reduction='none')
 binaryLoss = nn.BCELoss()
 zeroTensor = torch.zeros([batch_size]).to(device)
 oneTensor = torch.ones([batch_size]).to(device)
-binaryLossWeighing = 1e-5
+binaryLossWeighing = 1e-4
 
 numTrainingBatches = int(np.ceil(X_train[trainingIdxs[0]].shape[0] / batch_size))
 numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))
