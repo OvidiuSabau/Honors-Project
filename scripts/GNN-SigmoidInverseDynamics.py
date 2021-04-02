@@ -297,7 +297,8 @@ for epoch in range(15):
 
                 totalForwardLoss = actionsLoss.mean() + sigmoidLoss
 
-                predicted_actions, predicted_sigmoids = gnn(g2, x.flip(-1))
+                xHalfLength = int(x.shape[-1] / 2)
+                predicted_actions, predicted_sigmoids = gnn(g2, torch.cat((x[:, xHalfLength:], x[:, :xHalfLength]), -1))
                 
                 backwardLoss = binaryLossWeighing * binaryLoss(predicted_sigmoids, zeroTensor)
 
@@ -351,7 +352,8 @@ for epoch in range(15):
                 totalForwardLoss = actionsLoss.mean() + sigmoidLoss
                 totalForwardLoss.backward()
 
-                predicted_actions, predicted_sigmoids = gnn(g2, x.flip(-1))
+                xHalfLength = int(x.shape[-1] / 2)
+                predicted_actions, predicted_sigmoids = gnn(g2, torch.cat((x[:, xHalfLength:], x[:, :xHalfLength]), -1))
                 
                 backwardLoss = binaryLossWeighing * binaryLoss(predicted_sigmoids, zeroTensor)
                 backwardLoss.backward()
