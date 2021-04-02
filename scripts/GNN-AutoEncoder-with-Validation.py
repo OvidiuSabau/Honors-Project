@@ -224,11 +224,11 @@ for morphIdx in validationIdxs:
 # In[29]:
 
 
-hidden_sizes = [256, 256]
+hidden_sizes = [64, 64]
 
 inputSize = 13
-stateSize = 64
-messageSize = 64
+stateSize = 32
+messageSize = 32
 latentSize = 4
 numMessagePassingIterations = 6
 batch_size = 1024
@@ -241,7 +241,7 @@ numTestingAndValidationBatches = 10
 encoderInputNetwork = Network(inputSize, stateSize, hidden_sizes, with_batch_norm=with_batch_norm)
 encoderMessageNetwork = Network(stateSize + inputSize + 1, messageSize, hidden_sizes, with_batch_norm=with_batch_norm, activation=nn.Tanh)
 encoderUpdateNetwork = Network(stateSize + messageSize, stateSize, hidden_sizes, with_batch_norm=with_batch_norm)
-encoderOutputNetwork = Network(stateSize, latentSize, hidden_sizes, with_batch_norm=with_batch_norm, activation=nn.Tanh)
+encoderOutputNetwork = Network(stateSize, latentSize, hidden_sizes, with_batch_norm=with_batch_norm)
 encoderGNN = GraphNeuralNetwork(encoderInputNetwork, encoderMessageNetwork, encoderUpdateNetwork, encoderOutputNetwork, numMessagePassingIterations, encoder=True).to(device)
 
 # # Decoder Networks
