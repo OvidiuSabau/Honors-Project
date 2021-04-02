@@ -102,7 +102,7 @@ with_batch_norm = True
 activation = nn.Tanh
 minDistanceSeqAndRand = 0.25
 
-encoder = Network(input_size=inputSize, output_size=latentSize, hidden_sizes=hidden_sizes, with_batch_norm=with_batch_norm, activation=activation).to(device)
+encoder = Network(input_size=inputSize, output_size=latentSize, hidden_sizes=hidden_sizes, with_batch_norm=with_batch_norm).to(device)
 decoder = Network(input_size=latentSize, output_size=inputSize, hidden_sizes=hidden_sizes, with_batch_norm=with_batch_norm).to(device)
 
 

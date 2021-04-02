@@ -169,6 +169,8 @@ env = {}
 
 trainingIdxs = [0, 1, 2, 3, 4, 5]
 
+
+# save_dir = 'models/single-GNN-2-latent-no-contrastive/' + str(idx) + /
 save_dir = 'models/multi-GNN-4-latent-contrastive/'
 
 
@@ -246,7 +248,7 @@ with_batch_norm = True
 encoderInputNetwork = Network(inputSize, stateSize, hidden_sizes, with_batch_norm=with_batch_norm)
 encoderMessageNetwork = Network(stateSize + inputSize + 1, messageSize, hidden_sizes, with_batch_norm=with_batch_norm, activation=nn.Tanh)
 encoderUpdateNetwork = Network(stateSize + messageSize, stateSize, hidden_sizes, with_batch_norm=with_batch_norm)
-encoderOutputNetwork = Network(stateSize, latentSize, hidden_sizes, with_batch_norm=with_batch_norm, activation=nn.Tanh)
+encoderOutputNetwork = Network(stateSize, latentSize, hidden_sizes, with_batch_norm=with_batch_norm)
 encoderGNN = GraphNeuralNetwork(encoderInputNetwork, encoderMessageNetwork, encoderUpdateNetwork, encoderOutputNetwork, numMessagePassingIterations, encoder=True).to(device)
 
 # # Decoder Networks
