@@ -100,7 +100,7 @@ zeroTensor = torch.zeros([batch_size, 1]).to(device)
 oneTensor = torch.ones([batch_size, 1]).to(device)
 zeroTensorTest = torch.zeros([X_test.shape[0], 1]).to(device)
 oneTensorTest = torch.ones([X_test.shape[0], 1]).to(device)
-binaryLossWeighing = 0
+binaryLossWeighing = 5e-6
 
 trainLosses = []
 testLosses = []
@@ -123,7 +123,8 @@ for epoch in range(200):
         
         totalForwardLoss = actionsLoss.mean() + sigmoidLoss
         
-        y_actions, y_sigmoid = model.forward(X_test.flip(-1))
+        xHalfLength = int(X_test.shape[-1] / 2)
+        y_actions, y_sigmoid = model.forward(torch.cat((X_test[:, xHalfLength:], X_test[:, :xHalfLength]), -1))
         backwardLoss = binaryLossWeighing * binaryLoss(y_sigmoid, zeroTensorTest)
 
         testLosses[-1][3] = backwardLoss.item()
@@ -158,7 +159,8 @@ for epoch in range(200):
         totalForwardLoss = actionsLoss.mean() + sigmoidLoss
         totalForwardLoss.backward()
         
-        y_actions, y_sigmoid = model.forward(x.flip(-1))
+        xHalfLength = int(x.shape[-1] / 2)
+        y_actions, y_sigmoid = model.forward(torch.cat((x[:, xHalfLength:], x[:, :xHalfLength]), -1))
         backwardLoss = binaryLossWeighing * binaryLoss(y_sigmoid, zeroTensor)
         backwardLoss.backward()
         
