@@ -175,14 +175,14 @@ def save_weights_and_graph(save_dir):
     torch.save(gnn.state_dict(), save_dir + 'gnn.pt')
 
     for morphIdx in trainingIdxs:
-        np.save(save_dir + '/actionTrainLosses.npy', np.stack(actionTrainLosses[morphIdx]))
-        np.save(save_dir +'/sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
-        np.save(save_dir +'/actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
-        np.save(save_dir +'/sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
+        np.save(save_dir + '/' + str(morphIdx) + '-' + 'actionTrainLosses.npy', np.stack(actionTrainLosses[morphIdx]))
+        np.save(save_dir + '/' + str(morphIdx) + '-' + 'sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
+        np.save(save_dir + '/' + str(morphIdx) + '-' + 'actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
+        np.save(save_dir + '/' + str(morphIdx) + '-' + 'sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
 
     for morphIdx in validationIdxs:
-        np.save(save_dir + '/actionValidLosses.npy', np.stack(actionValidLosses[morphIdx]))
-        np.save(save_dir + '/sigmoidValidLosses.npy', np.stack(sigmoidValidLosses[morphIdx]))
+        np.save(save_dir + '/' + str(morphIdx) + '-' + 'actionValidLosses.npy', np.stack(actionValidLosses[morphIdx]))
+        np.save(save_dir + '/' + str(morphIdx) + '-' + 'sigmoidValidLosses.npy', np.stack(sigmoidValidLosses[morphIdx]))
 
 
 states = {}
@@ -194,7 +194,7 @@ env = {}
 
 for morphIdx in trainingIdxs + validationIdxs:
 
-    prefix = '../datasets/{}/'.format(morphIdx)
+    prefix = 'datasets/{}/'.format(morphIdx)
     
     states[morphIdx] = np.load(prefix + 'states_array.npy')
     actions[morphIdx] = np.load(prefix + 'actions_array.npy')
@@ -259,8 +259,8 @@ oneTensor = torch.ones([batch_size]).to(device)
 binaryLossWeighing = 1e-5
 
 
-numTrainingBatches = int(np.ceil(X_train[0].shape[0] / batch_size))
-numTestingBatches = int(np.ceil(X_test[0].shape[0] / batch_size))
+numTrainingBatches = int(np.ceil(X_train[trainingIdxs[-1]].shape[0] / batch_size))
+numTestingBatches = int(np.ceil(X_test[trainingIdxs[-1]].shape[0] / batch_size))
 
 actionTrainLosses = {}
 actionTestLosses = {}

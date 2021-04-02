@@ -182,7 +182,7 @@ env = {}
 
 for morphIdx in trainingIdxs + validationIdxs:
 
-    prefix = '../datasets/{}/'.format(morphIdx)
+    prefix = 'datasets/{}/'.format(morphIdx)
     
     states[morphIdx] = np.load(prefix + 'states_array.npy')
     actions[morphIdx] = np.load(prefix + 'actions_array.npy')
@@ -229,7 +229,7 @@ hidden_sizes = [256, 256]
 inputSize = 13
 stateSize = 64
 messageSize = 64
-latentSize = 2
+latentSize = 4
 numMessagePassingIterations = 6
 batch_size = 1024
 numBatchesPerTrainingStep = 1
@@ -270,8 +270,8 @@ criterion = nn.MSELoss(reduction='none')
 # In[31]:
 
 
-numTrainingBatches = int(np.ceil(X_train[0].shape[0] / batch_size))
-numTestingBatches = int(np.ceil(X_test[0].shape[0] / batch_size))
+numTrainingBatches = int(np.ceil(X_train[trainingIdxs[-1]].shape[0] / batch_size))
+numTestingBatches = int(np.ceil(X_test[trainingIdxs[-1]].shape[0] / batch_size))
 
 
 zeroTensor = torch.zeros([1]).to(device)

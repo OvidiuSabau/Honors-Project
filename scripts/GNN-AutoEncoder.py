@@ -164,10 +164,12 @@ next_states = {}
 dones = {}
 env = {}
 
-idx = 0
-trainingIdxs = [idx]
+# idx = 5
+# trainingIdxs = [idx]
 
-save_dir = 'models/GNN-AE-4-latent/' + str(idx) + '/'
+trainingIdxs = [0, 1, 2, 3, 4, 5]
+
+save_dir = 'models/multi-GNN-4-latent-contrastive/'
 
 
 def save_weights_and_graph(save_dir):
@@ -233,7 +235,7 @@ hidden_sizes = [256, 256]
 inputSize = 13
 stateSize = 64
 messageSize = 64
-latentSize = 2
+latentSize = 4
 numMessagePassingIterations = 6
 batch_size = 1024
 numBatchesPerTrainingStep = 1
@@ -381,7 +383,8 @@ for epoch in range(20):
 
                 trainLosses[morphIdx][-1][0] += autoencoder_loss.item() / numBatchesPerTrainingStep
                 trainLosses[morphIdx][-1][1] += final_contrastive_loss.item() / numBatchesPerTrainingStep
-            
+
+                # stepLoss = autoencoder_loss
                 stepLoss = autoencoder_loss + final_contrastive_loss
                 stepLoss /= (len(trainingIdxs) * numBatchesPerTrainingStep)
 
