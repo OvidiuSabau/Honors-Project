@@ -8,6 +8,7 @@ import torch.autograd
 import time
 import torch.optim as optim
 import torch.nn as nn
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 if torch.cuda.is_available():
     device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc. 
@@ -117,7 +118,10 @@ class GraphNeuralNetwork(nn.Module):
         graph.apply_nodes(self.outputFunction)
         
         output = graph.ndata['output']
-        
+
+        if self.encoder:
+            output = F.normalize(output, dim=-1)
+
         return output
     
     def update_states_in_graph(self, graph, state):
@@ -312,15 +316,14 @@ for epoch in range(20):
                 encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
 
                 latent_states = encoderGNN(encoder_graph, encoderInput)
-                normalized_latent_states = latent_states / torch.sqrt(1e-8 + (latent_states ** 2).sum(dim=-1)).unsqueeze(2)
-                current_state_reconstruction = decoderGNN(decoder_graph, normalized_latent_states[:, 0:current_states.shape[0], :])
+                current_state_reconstruction = decoderGNN(decoder_graph, latent_states[:, 0:current_states.shape[0], :])
                 current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
 
                 autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7], current_state_reconstruction).mean()
                 # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-                sequential_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, batch_size:batch_size * 2, :], p=None, dim=2)
+                sequential_distances = torch.norm(latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :], p=None, dim=2)
                 # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-                random_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, 2 * batch_size: 3 * batch_size, :], p=None, dim=2)
+                random_distances = torch.norm(latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :], p=None, dim=2)
                 # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
                 contrastive_loss = torch.max(zeroTensor, sequential_distances - random_distances + minDistanceSeqAndRand)
                 # get 0-1 matrix which is True if entry is not 0
@@ -366,16 +369,15 @@ for epoch in range(20):
                 
                 encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
                 latent_states = encoderGNN(encoder_graph, encoderInput)
-                normalized_latent_states = latent_states / torch.sqrt(1e-8 + (latent_states ** 2).sum(dim=-1)).unsqueeze(2)
-                
-                current_state_reconstruction = decoderGNN(decoder_graph, normalized_latent_states[:, 0:current_states.shape[0], :])
+
+                current_state_reconstruction = decoderGNN(decoder_graph, latent_states[:, 0:current_states.shape[0], :])
                 current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
                 autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7], current_state_reconstruction).mean()
                 
                 # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-                sequential_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, batch_size:batch_size * 2, :], p=None, dim=2)
+                sequential_distances = torch.norm(latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :], p=None, dim=2)
                 # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-                random_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, 2 * batch_size: 3 * batch_size, :], p=None, dim=2)
+                random_distances = torch.norm(latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :], p=None, dim=2)
                 # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
                 contrastive_loss = torch.max(zeroTensor, sequential_distances - random_distances + minDistanceSeqAndRand)
                 # get 0-1 matrix which is True if entry is not 0
@@ -407,7 +409,6 @@ for epoch in range(20):
         decoder_graph = None
         encoderInput = None
         latent_states = None
-        normalized_latent_states = None
         current_state_reconstruction = None
         autoencoder_loss = None
         contrastive_loss_1 = None
