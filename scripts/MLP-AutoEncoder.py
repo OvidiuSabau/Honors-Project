@@ -66,7 +66,7 @@ def save_weights_and_graph(save_dir):
 
 
 idx = 3
-save_dir = 'models/MLP-inverseDynamics/no-contrastive/' + str(idx) + '/'
+save_dir = 'models/MLP-inverseDynamics/contrastive/' + str(idx) + '/'
 
 prefix = 'datasets/' + str(idx) + '/'
 states = np.load(prefix + 'states_array.npy')
@@ -108,6 +108,8 @@ decoder = Network(input_size=latentSize, output_size=inputSize, hidden_sizes=hid
 
 # In[27]:
 
+maxSeqDist = 0.03
+minRandDist = 0.4
 
 lr = 5e-4
 optimizer = optim.Adam(itertools.chain(encoder.parameters(), decoder.parameters()), lr=lr)
@@ -130,7 +132,7 @@ trainLosses = []
 testLosses = []
 
 
-for epoch in range(50):
+for epoch in range(100):
     
     print('Starting Epoch {}'.format(epoch))
     epoch_t0 = time.time()
@@ -141,7 +143,7 @@ for epoch in range(50):
 
     with torch.no_grad():
         
-        testLosses.append(np.zeros(2))
+        testLosses.append(np.zeros(3))
         for batch in range(0, numTestingBatches-1):
 
             current_states = X_test[batch * batch_size:(batch+1)*batch_size]
@@ -157,18 +159,22 @@ for epoch in range(50):
 
             autoencoder_loss = criterion(encoderInput[:batch_size], current_state_reconstruction).mean()
             # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-            sequential_distances = torch.norm(normalized_latent_states[:batch_size] - normalized_latent_states[batch_size:batch_size * 2], p=None, dim=-1)
+            sequential_distances = ((normalized_latent_states[:batch_size] - normalized_latent_states[batch_size:batch_size * 2]) ** 2).mean(dim=-1)
             # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-            random_distances = torch.norm(normalized_latent_states[:batch_size] - normalized_latent_states[2 * batch_size: 3 * batch_size], p=None, dim=-1)
+            random_distances = ((normalized_latent_states[:batch_size] - normalized_latent_states[2 * batch_size: 3 * batch_size]) ** 2).mean(dim=-1)
             # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
-            contrastive_loss = torch.max(zeroTensor, sequential_distances - random_distances + minDistanceSeqAndRand)
+            contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
+            contrastive_loss_2 = torch.max(zeroTensor, minRandDist - random_distances)
+
+            final_contrastive_loss = contrastive_loss_1 + contrastive_loss_2
             # get 0-1 matrix which is True if entry is not 0
-            mask = contrastive_loss != 0
+            mask = final_contrastive_loss != 0
             # Compute average over nonzero entries in batch, result will be scalar
-            final_contrastive_loss = contrastive_loss.sum() / (mask.sum() + 1e-8)
+            final_contrastive_loss = final_contrastive_loss.sum() / mask.sum()
 
             testLosses[-1][0] += autoencoder_loss.item()
-            testLosses[-1][1] += final_contrastive_loss.item()
+            testLosses[-1][1] += contrastive_loss_1.mean().detach().cpu()
+            testLosses[-1][2] += contrastive_loss_2.mean().detach().cpu()
         testLosses[-1] /= numTestingBatches-1
 
     print('Test {:.3f} : {:.3f}'.format(testLosses[-1][0], testLosses[-1][1]))
@@ -177,7 +183,7 @@ for epoch in range(50):
                 
         t0 = time.time()
         
-        trainLosses.append(np.zeros(2))
+        trainLosses.append(np.zeros(3))
                         
         current_states = X_train[batch * batch_size:(batch+1)*batch_size]
         next_states = Y_train[batch * batch_size:(batch+1)*batch_size]
@@ -192,21 +198,29 @@ for epoch in range(50):
 
         autoencoder_loss = criterion(encoderInput[:batch_size], current_state_reconstruction).mean()
         # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-        sequential_distances = torch.norm(normalized_latent_states[:batch_size] - normalized_latent_states[batch_size:batch_size * 2], p=None, dim=-1)
+        # sequential_distances = torch.norm(normalized_latent_states[:batch_size] - normalized_latent_states[batch_size:batch_size * 2], p=None, dim=-1)
         # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-        random_distances = torch.norm(normalized_latent_states[:batch_size] - normalized_latent_states[2 * batch_size: 3 * batch_size], p=None, dim=-1)
+        # random_distances = torch.norm(normalized_latent_states[:batch_size] - normalized_latent_states[2 * batch_size: 3 * batch_size], p=None, dim=-1)
         # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
-        contrastive_loss = torch.max(zeroTensor, sequential_distances - random_distances + minDistanceSeqAndRand)
+        sequential_distances = ((normalized_latent_states[:batch_size] - normalized_latent_states[batch_size:batch_size * 2]) ** 2).mean(dim=-1)
+        # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
+        random_distances = ((normalized_latent_states[:batch_size] - normalized_latent_states[2 * batch_size: 3 * batch_size]) ** 2).mean(dim=-1)
+        # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
+        contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
+        contrastive_loss_2 = torch.max(zeroTensor, minRandDist - random_distances)
+
+        final_contrastive_loss = contrastive_loss_1 + contrastive_loss_2
         # get 0-1 matrix which is True if entry is not 0
-        mask = contrastive_loss != 0
+        mask = final_contrastive_loss != 0
         # Compute average over nonzero entries in batch, result will be scalar
-        final_contrastive_loss = contrastive_loss.sum() / mask.sum()
-        
-        # stepLoss = autoencoder_loss
+        final_contrastive_loss = final_contrastive_loss.sum() / mask.sum()
+
+        trainLosses[-1][0] += autoencoder_loss.item()
+        trainLosses[-1][1] += contrastive_loss_1.mean().detach().cpu()
+        trainLosses[-1][2] += contrastive_loss_2.mean().detach().cpu()
+
         stepLoss = autoencoder_loss + final_contrastive_loss
         
-        trainLosses[-1][0] += autoencoder_loss.item()
-        trainLosses[-1][1] += final_contrastive_loss.item()
 
         
         optimizer.zero_grad()

@@ -154,7 +154,7 @@ class GraphNeuralNetwork(nn.Module):
 trainingIdxs = [1, 2, 3, 5]
 validationIdxs = [0, 4]
 
-save_dir = 'models/GNN-AE-2-latent-withValidation/'
+save_dir = 'models/GNN-AE-4-latent-withValidation/'
 
 
 def save_weights_and_graph(save_dir):
@@ -224,18 +224,22 @@ for morphIdx in validationIdxs:
 # In[29]:
 
 
-hidden_sizes = [64, 64]
+hidden_sizes = [256, 256]
 
 inputSize = 13
-stateSize = 32
-messageSize = 32
-latentSize = 2
+stateSize = 64
+messageSize = 64
+latentSize = 4
 numMessagePassingIterations = 6
 batch_size = 1024
 numBatchesPerTrainingStep = 1
 minDistanceSeqAndRand = 0.25
 with_batch_norm = True
 numTestingAndValidationBatches = 10
+
+maxSeqDist = 0.03
+minRandDist = 0.4
+
 
 # # Encoder Networks 
 encoderInputNetwork = Network(inputSize, stateSize, hidden_sizes, with_batch_norm=with_batch_norm)
@@ -308,80 +312,91 @@ for epoch in range(10):
             
             for morphIdx in trainingIdxs:
                 
-                testLosses[morphIdx].append(np.zeros(2))
+                testLosses[morphIdx].append(np.zeros(3))
                 testingBatches = np.random.choice(np.arange(numTestingBatches-1), size=numTestingAndValidationBatches, replace=False)
                 for batch_ in testingBatches:
-
                     encoder_graph = env[morphIdx].get_graph()._get_dgl_graph()
                     decoder_graph = env[morphIdx].get_graph()._get_dgl_graph()
 
-                    current_states = X_test[morphIdx][batch_ * batch_size:(batch_+1)*batch_size]
-                    next_states = Y_test[morphIdx][batch_ * batch_size:(batch_+1)*batch_size]
-                    random_indexes = np.random.choice(X_train[morphIdx].shape[0],size=batch_size, replace=False)
+                    current_states = X_test[morphIdx][batch_ * batch_size:(batch_ + 1) * batch_size]
+                    next_states = Y_test[morphIdx][batch_ * batch_size:(batch_ + 1) * batch_size]
+                    random_indexes = np.random.choice(X_train[morphIdx].shape[0], size=batch_size, replace=False)
                     random_states = X_train[morphIdx][random_indexes]
 
                     encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
 
                     latent_states = encoderGNN(encoder_graph, encoderInput)
-                    normalized_latent_states = latent_states / torch.sqrt(1e-8 + (latent_states ** 2).sum(dim=-1)).unsqueeze(2)
-                    current_state_reconstruction = decoderGNN(decoder_graph, normalized_latent_states[:, 0:current_states.shape[0], :])
+                    current_state_reconstruction = decoderGNN(decoder_graph,
+                                                              latent_states[:, 0:current_states.shape[0], :])
                     current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
 
-                    autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7], current_state_reconstruction).mean()
+                    autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7],
+                                                 current_state_reconstruction).mean()
                     # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-                    sequential_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, batch_size:batch_size * 2, :], p=None, dim=2)
+                    sequential_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:,
+                                                                                 batch_size:batch_size * 2,
+                                                                                 :]) ** 2).mean(dim=-1)
                     # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-                    random_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, 2 * batch_size: 3 * batch_size, :], p=None, dim=2)
+                    random_distances = (
+                    (latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :])).mean(
+                        dim=-1)
+
                     # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
-                    contrastive_loss = torch.max(zeroTensor, sequential_distances - random_distances + minDistanceSeqAndRand)
+                    contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
+                    contrastive_loss_2 = torch.max(zeroTensor, minRandDist - random_distances)
+
+                    final_contrastive_loss = contrastive_loss_1 + contrastive_loss_2
                     # get 0-1 matrix which is True if entry is not 0
-                    mask = contrastive_loss != 0
+                    mask = final_contrastive_loss != 0
                     # Compute average over nonzero entries in batch, result will be scalar
-                    final_contrastive_loss = contrastive_loss.sum() / mask.sum()
+                    final_contrastive_loss = final_contrastive_loss.sum() / mask.sum()
 
                     testLosses[morphIdx][-1][0] += autoencoder_loss.item() / numBatchesPerTrainingStep
-                    testLosses[morphIdx][-1][1] += final_contrastive_loss.item() / numBatchesPerTrainingStep
-                testLosses[morphIdx][-1] /= numTestingAndValidationBatches
-                
+                    testLosses[morphIdx][-1][1] += contrastive_loss_1.mean().detach().cpu() / numBatchesPerTrainingStep
+                    testLosses[morphIdx][-1][2] += contrastive_loss_2.mean().detach().cpu() / numBatchesPerTrainingStep
+                testLosses[morphIdx][-1] /= numTestingBatches - 1
+
             for morphIdx in validationIdxs:
-                validLosses[morphIdx].append(np.zeros(2))
+                validLosses[morphIdx].append(np.zeros(3))
                 validationBatches = np.random.choice(np.arange(numTestingBatches + numTrainingBatches - 1), size=numTestingAndValidationBatches, replace=False)
                 for batch_ in validationBatches:
-
                     encoder_graph = env[morphIdx].get_graph()._get_dgl_graph()
                     decoder_graph = env[morphIdx].get_graph()._get_dgl_graph()
 
-                    current_states = X_valid[morphIdx][batch_ * batch_size:(batch_+1)*batch_size]
-                    next_states = Y_valid[morphIdx][batch_ * batch_size:(batch_+1)*batch_size]
-                    random_indexes = np.random.choice(X_valid[morphIdx].shape[0],size=batch_size, replace=False)
+                    current_states = X_valid[morphIdx][batch_ * batch_size:(batch_ + 1) * batch_size]
+                    next_states = Y_valid[morphIdx][batch_ * batch_size:(batch_ + 1) * batch_size]
+                    random_indexes = np.random.choice(X_valid[morphIdx].shape[0], size=batch_size, replace=False)
                     random_states = X_valid[morphIdx][random_indexes]
 
                     encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
 
                     latent_states = encoderGNN(encoder_graph, encoderInput)
-                    normalized_latent_states = latent_states / torch.sqrt(1e-8 + (latent_states ** 2).sum(dim=-1)).unsqueeze(2)
-                    current_state_reconstruction = decoderGNN(decoder_graph, normalized_latent_states[:, 0:current_states.shape[0], :])
+                    current_state_reconstruction = decoderGNN(decoder_graph, latent_states[:, 0:current_states.shape[0], :])
                     current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
 
-                    autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7], current_state_reconstruction).mean()
+                    autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7],current_state_reconstruction).mean()
                     # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-                    sequential_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, batch_size:batch_size * 2, :], p=None, dim=2)
+                    sequential_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:,batch_size:batch_size * 2,:]) ** 2).mean(dim=-1)
                     # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-                    random_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, 2 * batch_size: 3 * batch_size, :], p=None, dim=2)
+                    random_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :])).mean(dim=-1)
+
                     # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
-                    contrastive_loss = torch.max(zeroTensor, sequential_distances - random_distances + minDistanceSeqAndRand)
+                    contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
+                    contrastive_loss_2 = torch.max(zeroTensor, minRandDist - random_distances)
+
+                    final_contrastive_loss = contrastive_loss_1 + contrastive_loss_2
                     # get 0-1 matrix which is True if entry is not 0
-                    mask = contrastive_loss != 0
+                    mask = final_contrastive_loss != 0
                     # Compute average over nonzero entries in batch, result will be scalar
-                    final_contrastive_loss = contrastive_loss.sum() / mask.sum()
+                    final_contrastive_loss = final_contrastive_loss.sum() / mask.sum()
 
                     validLosses[morphIdx][-1][0] += autoencoder_loss.item() / numBatchesPerTrainingStep
-                    validLosses[morphIdx][-1][1] += final_contrastive_loss.item() / numBatchesPerTrainingStep
-                validLosses[morphIdx][-1] /= numTestingAndValidationBatches
+                    validLosses[morphIdx][-1][1] += contrastive_loss_1.mean().detach().cpu() / numBatchesPerTrainingStep
+                    validLosses[morphIdx][-1][2] += contrastive_loss_2.mean().detach().cpu() / numBatchesPerTrainingStep
                         
         for morphIdx in trainingIdxs:
             numNodes = (X_train[morphIdx].shape[1] - 5) // 2
-            trainLosses[morphIdx].append(np.zeros(2))
+            trainLosses[morphIdx].append(np.zeros(3))
         
         
         for batchOffset in range(numBatchesPerTrainingStep):
@@ -392,34 +407,41 @@ for epoch in range(10):
             for morphIdx in trainingIdxs:
                 encoder_graph = env[morphIdx].get_graph()._get_dgl_graph()
                 decoder_graph = env[morphIdx].get_graph()._get_dgl_graph()
-                                
-                current_states = X_train[morphIdx][(batch+batchOffset) * batch_size:(batch+batchOffset+1)*batch_size]
-                next_states = Y_train[morphIdx][(batch+batchOffset) * batch_size:(batch+batchOffset+1)*batch_size]
-                random_indexes = np.random.choice(X_train[morphIdx].shape[0],size=current_states.shape[0], replace=False)
+
+                current_states = X_train[morphIdx][
+                                 (batch + batchOffset) * batch_size:(batch + batchOffset + 1) * batch_size]
+                next_states = Y_train[morphIdx][
+                              (batch + batchOffset) * batch_size:(batch + batchOffset + 1) * batch_size]
+                random_indexes = np.random.choice(X_train[morphIdx].shape[0], size=current_states.shape[0], replace=False)
                 random_states = X_train[morphIdx][random_indexes]
-                
+
                 encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
                 latent_states = encoderGNN(encoder_graph, encoderInput)
-                normalized_latent_states = latent_states / torch.sqrt(1e-8 + (latent_states ** 2).sum(dim=-1)).unsqueeze(2)
-                
-                current_state_reconstruction = decoderGNN(decoder_graph, normalized_latent_states[:, 0:current_states.shape[0], :])
+
+                current_state_reconstruction = decoderGNN(decoder_graph, latent_states[:, 0:current_states.shape[0], :])
                 current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
-                autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7], current_state_reconstruction).mean()
-                
+                autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7],
+                                             current_state_reconstruction).mean()
+
                 # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-                sequential_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, batch_size:batch_size * 2, :], p=None, dim=2)
+                sequential_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :]) ** 2).mean(dim=-1)
                 # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-                random_distances = torch.norm(normalized_latent_states[:, 0:batch_size, :] - normalized_latent_states[:, 2 * batch_size: 3 * batch_size, :], p=None, dim=2)
+                random_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :])).mean(dim=-1)
                 # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
-                contrastive_loss = torch.max(zeroTensor, sequential_distances - random_distances + minDistanceSeqAndRand)
+
+                contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
+                contrastive_loss_2 = torch.max(zeroTensor, minRandDist - random_distances)
+
+                final_contrastive_loss = contrastive_loss_1 + contrastive_loss_2
                 # get 0-1 matrix which is True if entry is not 0
-                mask = contrastive_loss != 0
+                mask = final_contrastive_loss != 0
                 # Compute average over nonzero entries in batch, result will be scalar
-                final_contrastive_loss = contrastive_loss.sum() / mask.sum()
+                final_contrastive_loss = final_contrastive_loss.sum() / mask.sum()
 
                 trainLosses[morphIdx][-1][0] += autoencoder_loss.item() / numBatchesPerTrainingStep
-                trainLosses[morphIdx][-1][1] += final_contrastive_loss.item() / numBatchesPerTrainingStep
-            
+                trainLosses[morphIdx][-1][1] += contrastive_loss_1.mean().detach().cpu() / numBatchesPerTrainingStep
+                trainLosses[morphIdx][-1][2] += contrastive_loss_2.mean().detach().cpu() / numBatchesPerTrainingStep
+
                 stepLoss = autoencoder_loss + final_contrastive_loss
                 stepLoss /= (len(trainingIdxs) * numBatchesPerTrainingStep)
 
