@@ -66,7 +66,7 @@ def save_weights_and_graph(save_dir):
     np.save(save_dir +'/testLosses.npy', np.stack(testLosses))
 
 idx = 0
-save_dir = 'models/MLP-inverseDynamics/no-sigmoid/' + str(idx) + '/'
+save_dir = 'models/MLP-inverseDynamics/with-sigmoid/' + str(idx) + '/'
 
 prefix = 'datasets/' + str(idx) + '/'
 states = np.load(prefix + 'states_array.npy')
@@ -94,13 +94,13 @@ model = Network(X_train.shape[1], Y_train.shape[1], hidden_sizes=[256, 256], wit
 optimizer = optim.Adam(model.parameters(), lr=lr)
 lmbda = lambda epoch: 0.8
 lr_scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lmbda)
-l2Loss  = nn.L1Loss(reduction='none')
+l2Loss  = nn.MSELoss(reduction='none')
 binaryLoss = nn.BCELoss()
 zeroTensor = torch.zeros([batch_size, 1]).to(device)
 oneTensor = torch.ones([batch_size, 1]).to(device)
 zeroTensorTest = torch.zeros([X_test.shape[0], 1]).to(device)
 oneTensorTest = torch.ones([X_test.shape[0], 1]).to(device)
-binaryLossWeighing = 5e-6
+binaryLossWeighing = 1e-8
 
 trainLosses = []
 testLosses = []

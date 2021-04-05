@@ -162,8 +162,8 @@ class GraphNeuralNetwork(nn.Module):
         else:
             graph.ndata['state'] = nodeData
 
-trainingIdxs = [1, 2, 3, 5]
-validationIdxs = [0, 4]
+trainingIdxs = [0, 2, 4, 5]
+validationIdxs = [1, 3]
 
 save_dir = 'models/GNN-SigmoidInverseDynamics-withValidation/'
 
@@ -175,14 +175,14 @@ def save_weights_and_graph(save_dir):
     torch.save(gnn.state_dict(), save_dir + 'gnn.pt')
 
     for morphIdx in trainingIdxs:
-        np.save(save_dir + '/' + str(morphIdx) + '-' + 'actionTrainLosses.npy', np.stack(actionTrainLosses[morphIdx]))
-        np.save(save_dir + '/' + str(morphIdx) + '-' + 'sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
-        np.save(save_dir + '/' + str(morphIdx) + '-' + 'actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
-        np.save(save_dir + '/' + str(morphIdx) + '-' + 'sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
+        np.save(save_dir +  str(morphIdx)  + '-actionTrainLosses.npy', np.stack(actionTrainLosses[morphIdx]))
+        np.save(save_dir +  str(morphIdx)  + '-sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
+        np.save(save_dir +  str(morphIdx)  + '-actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
+        np.save(save_dir +  str(morphIdx)  + '-sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
 
     for morphIdx in validationIdxs:
-        np.save(save_dir + '/' + str(morphIdx) + '-' + 'actionValidLosses.npy', np.stack(actionValidLosses[morphIdx]))
-        np.save(save_dir + '/' + str(morphIdx) + '-' + 'sigmoidValidLosses.npy', np.stack(sigmoidValidLosses[morphIdx]))
+        np.save(save_dir +  str(morphIdx)  + '-actionValidLosses.npy', np.stack(actionValidLosses[morphIdx]))
+        np.save(save_dir +  str(morphIdx)  + '-sigmoidValidLosses.npy', np.stack(sigmoidValidLosses[morphIdx]))
 
 
 states = {}
@@ -249,14 +249,14 @@ gnn = GraphNeuralNetwork(inputNetwork, messageNetwork, updateNetwork, outputNetw
 
 lr = 5e-4
 optimizer = optim.Adam(itertools.chain(inputNetwork.parameters(), messageNetwork.parameters(), updateNetwork.parameters(), outputNetwork.parameters())
-                       , lr=lr, weight_decay=0)
+                       , lr=lr, weight_decay=1e-5)
 
 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=1e-5, threshold=1e-2)
 l2Loss = nn.MSELoss(reduction='none')
 binaryLoss = nn.BCELoss()
 zeroTensor = torch.zeros([batch_size]).to(device)
 oneTensor = torch.ones([batch_size]).to(device)
-binaryLossWeighing = 1e-5
+binaryLossWeighing = 1e-3
 
 
 numTrainingBatches = int(np.ceil(X_train[trainingIdxs[-1]].shape[0] / batch_size))

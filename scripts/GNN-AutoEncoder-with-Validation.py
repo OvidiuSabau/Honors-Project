@@ -154,7 +154,7 @@ class GraphNeuralNetwork(nn.Module):
 trainingIdxs = [1, 2, 3, 5]
 validationIdxs = [0, 4]
 
-save_dir = 'models/GNN-AE-4-latent-withValidation/'
+save_dir = 'models/GNN-AE-2-latent-withValidation/'
 
 
 def save_weights_and_graph(save_dir):
@@ -229,7 +229,7 @@ hidden_sizes = [64, 64]
 inputSize = 13
 stateSize = 32
 messageSize = 32
-latentSize = 4
+latentSize = 2
 numMessagePassingIterations = 6
 batch_size = 1024
 numBatchesPerTrainingStep = 1

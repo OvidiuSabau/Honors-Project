@@ -168,13 +168,13 @@ def save_weights_and_graph(save_dir):
     torch.save(gnn.state_dict(), save_dir + 'gnn.pt')
 
     for morphIdx in trainingIdxs:
-        np.save(save_dir + '/actionTrainLosses.npy', np.stack(actionTrainLosses[morphIdx]))
-        np.save(save_dir +'/sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
-        np.save(save_dir +'/actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
-        np.save(save_dir +'/sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
+        np.save(save_dir + str(morphIdx) + '-actionTrainLosses.npy', np.stack(actionTrainLosses[morphIdx]))
+        np.save(save_dir + str(morphIdx) + '-sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
+        np.save(save_dir + str(morphIdx) + '-actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
+        np.save(save_dir + str(morphIdx) + '-sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
 
 
-# idx = 0
+# idx = 5
 # trainingIdxs = [idx]
 
 trainingIdxs = [0,1,2,3,4,5]
@@ -246,7 +246,7 @@ l2Loss = nn.MSELoss(reduction='none')
 binaryLoss = nn.BCELoss()
 zeroTensor = torch.zeros([batch_size]).to(device)
 oneTensor = torch.ones([batch_size]).to(device)
-binaryLossWeighing = 1e-4
+binaryLossWeighing = 1e-3
 
 numTrainingBatches = int(np.ceil(X_train[trainingIdxs[0]].shape[0] / batch_size))
 numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))

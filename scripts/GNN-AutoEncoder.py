@@ -164,14 +164,14 @@ next_states = {}
 dones = {}
 env = {}
 
-# idx = 5
-# trainingIdxs = [idx]
+idx = 5
+trainingIdxs = [idx]
 
-trainingIdxs = [0, 1, 2, 3, 4, 5]
+# trainingIdxs = [0, 1, 2, 3, 4, 5]
 
 
-# save_dir = 'models/single-GNN-2-latent-no-contrastive/' + str(idx) + /
-save_dir = 'models/multi-GNN-4-latent-contrastive/'
+save_dir = 'models/single-GNN-2-latent-contrastive/' + str(idx) + '/'
+# save_dir = 'models/multi-GNN-2-latent-no-contrastive/'
 
 
 def save_weights_and_graph(save_dir):
@@ -241,7 +241,8 @@ latentSize = 4
 numMessagePassingIterations = 6
 batch_size = 1024
 numBatchesPerTrainingStep = 1
-minDistanceSeqAndRand = 0.25
+minDistanceSeqAndRand = 0.1
+contrastive_loss_weight = 1e4
 with_batch_norm = True
 
 # # Encoder Networks 
@@ -387,7 +388,7 @@ for epoch in range(20):
                 trainLosses[morphIdx][-1][1] += final_contrastive_loss.item() / numBatchesPerTrainingStep
 
                 # stepLoss = autoencoder_loss
-                stepLoss = autoencoder_loss + final_contrastive_loss
+                stepLoss = autoencoder_loss + contrastive_loss_weight * final_contrastive_loss
                 stepLoss /= (len(trainingIdxs) * numBatchesPerTrainingStep)
 
                 stepLoss.backward()

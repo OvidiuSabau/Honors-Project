@@ -202,8 +202,8 @@ for epoch in range(50):
         # Compute average over nonzero entries in batch, result will be scalar
         final_contrastive_loss = contrastive_loss.sum() / mask.sum()
         
-        stepLoss = autoencoder_loss
-#         stepLoss = autoencoder_loss + final_contrastive_loss
+        # stepLoss = autoencoder_loss
+        stepLoss = autoencoder_loss + final_contrastive_loss
         
         trainLosses[-1][0] += autoencoder_loss.item()
         trainLosses[-1][1] += final_contrastive_loss.item()
