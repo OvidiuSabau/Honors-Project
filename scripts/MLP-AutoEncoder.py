@@ -4,6 +4,7 @@ import torch.autograd
 import time
 import torch.optim as optim
 import torch.nn as nn
+import torch.nn.functional as F
 if torch.cuda.is_available():
     device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc. 
     print("Running on the GPU")
@@ -20,24 +21,25 @@ class Network(nn.Module):
         output_size,
         hidden_sizes,
         with_batch_norm=False,
-        activation=None
+        activation=None,
+        encoder=True
     ):
         super(Network, self).__init__()
         self.hidden_sizes = hidden_sizes
         self.input_size = input_size
         self.output_size = output_size
-        
+        self.encoder = encoder
         self.layers = nn.ModuleList()
 
         self.layers.append(nn.Linear(self.input_size, hidden_sizes[0]))
         if with_batch_norm:
-            self.layers.append(nn.BatchNorm1d(num_features=(hidden_sizes[0])))
+            self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[0])))
         self.layers.append(nn.ReLU())
         
         for i in range(len(hidden_sizes) - 1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
             if with_batch_norm:
-                self.layers.append(nn.BatchNorm1d(num_features=(hidden_sizes[i+1])))
+                self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[i+1])))
             self.layers.append(nn.ReLU())
         
         self.layers.append(nn.Linear(hidden_sizes[len(hidden_sizes) - 1], self.output_size))
@@ -50,7 +52,10 @@ class Network(nn.Module):
         
         for layer in self.layers:
             out = layer(out)
-            
+
+        if self.encoder:
+            out = F.normalize(out, dim=-1)
+
         return out
 
 def save_weights_and_graph(save_dir):
@@ -102,8 +107,8 @@ with_batch_norm = True
 activation = nn.Tanh
 minDistanceSeqAndRand = 0.25
 
-encoder = Network(input_size=inputSize, output_size=latentSize, hidden_sizes=hidden_sizes, with_batch_norm=with_batch_norm).to(device)
-decoder = Network(input_size=latentSize, output_size=inputSize, hidden_sizes=hidden_sizes, with_batch_norm=with_batch_norm).to(device)
+encoder = Network(input_size=inputSize, output_size=latentSize, hidden_sizes=hidden_sizes, with_batch_norm=with_batch_norm, encoder=True).to(device)
+decoder = Network(input_size=latentSize, output_size=inputSize, hidden_sizes=hidden_sizes, with_batch_norm=with_batch_norm, encoder=False).to(device)
 
 
 # In[27]:
@@ -154,14 +159,13 @@ for epoch in range(100):
             encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
 
             latent_states = encoder(encoderInput)
-            normalized_latent_states = latent_states / torch.sqrt(1e-8 + (latent_states ** 2).sum(dim=-1)).unsqueeze(-1)
-            current_state_reconstruction = decoder(normalized_latent_states[0:batch_size])
+            current_state_reconstruction = decoder(latent_states[0:batch_size])
 
             autoencoder_loss = criterion(encoderInput[:batch_size], current_state_reconstruction).mean()
             # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-            sequential_distances = ((normalized_latent_states[:batch_size] - normalized_latent_states[batch_size:batch_size * 2]) ** 2).mean(dim=-1)
+            sequential_distances = ((latent_states[:batch_size] - latent_states[batch_size:batch_size * 2]) ** 2).mean(dim=-1)
             # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-            random_distances = ((normalized_latent_states[:batch_size] - normalized_latent_states[2 * batch_size: 3 * batch_size]) ** 2).mean(dim=-1)
+            random_distances = ((latent_states[:batch_size] - latent_states[2 * batch_size: 3 * batch_size]) ** 2).mean(dim=-1)
             # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
             contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
             contrastive_loss_2 = torch.max(zeroTensor, minRandDist - random_distances)
@@ -193,8 +197,7 @@ for epoch in range(100):
         encoderInput = torch.cat((current_states, next_states, random_states), dim=0).to(device)
 
         latent_states = encoder(encoderInput)
-        normalized_latent_states = latent_states / torch.sqrt(1e-8 + (latent_states ** 2).sum(dim=-1)).unsqueeze(-1)
-        current_state_reconstruction = decoder(normalized_latent_states[0:batch_size])
+        current_state_reconstruction = decoder(latent_states[0:batch_size])
 
         autoencoder_loss = criterion(encoderInput[:batch_size], current_state_reconstruction).mean()
         # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
@@ -202,9 +205,9 @@ for epoch in range(100):
         # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
         # random_distances = torch.norm(normalized_latent_states[:batch_size] - normalized_latent_states[2 * batch_size: 3 * batch_size], p=None, dim=-1)
         # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
-        sequential_distances = ((normalized_latent_states[:batch_size] - normalized_latent_states[batch_size:batch_size * 2]) ** 2).mean(dim=-1)
+        sequential_distances = ((latent_states[:batch_size] - latent_states[batch_size:batch_size * 2]) ** 2).mean(dim=-1)
         # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-        random_distances = ((normalized_latent_states[:batch_size] - normalized_latent_states[2 * batch_size: 3 * batch_size]) ** 2).mean(dim=-1)
+        random_distances = ((latent_states[:batch_size] - latent_states[2 * batch_size: 3 * batch_size]) ** 2).mean(dim=-1)
         # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
         contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
         contrastive_loss_2 = torch.max(zeroTensor, minRandDist - random_distances)
