@@ -455,7 +455,7 @@ episode_steps = 2
 
 with torch.no_grad():
 
-    print('Starting ({}, {})...'.format(H, R), end='', flush=True)
+    print('Starting ({}, {}) and batch_size {}...'.format(H, R, batch_size), end='', flush=True)
     trial_t0 = time.time()
     trial_rewards = []
     for _ in range(num_trials):
