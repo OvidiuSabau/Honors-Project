@@ -3,13 +3,13 @@
 
 # In[1]:
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch.autograd
 import time
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 if torch.cuda.is_available():
     device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc. 
     print("Running on the GPU")
@@ -171,20 +171,15 @@ next_states = {}
 dones = {}
 env = {}
 
-# idx = 5
-# trainingIdxs = [idx]
+idx = 5
+trainingIdxs = [idx]
 
-trainingIdxs = [0, 1, 2, 3, 4, 5]
+# trainingIdxs = [0]
 
 
-# save_dir = 'models/single-GNN-2-latent-no-contrastive/' + str(idx) + /
-save_dir = 'models/multi-GNN-4-latent-contrastive/'
-
+# save_dir = 'models/new-multi-GNN-2-latent-contrastive/'
 
 def save_weights_and_graph(save_dir):
-
-    if not os.path.isdir(save_dir):
-        os.makedirs(save_dir, exist_ok=True)
 
     torch.save(encoderGNN.state_dict(), save_dir + 'encoderGNN.pt')
     torch.save(decoderGNN.state_dict(), save_dir + 'decoderGNN.pt')
@@ -192,15 +187,6 @@ def save_weights_and_graph(save_dir):
     for morphIdx in trainingIdxs:
         np.save(save_dir + str(morphIdx) + '-testLosses', np.stack(testLosses[morphIdx]))
         np.save(save_dir + str(morphIdx) + '-trainLosses', np.stack(trainLosses[morphIdx]))
-
-    plt.grid(True)
-    plt.xlabel('Epoch')
-    plt.ylabel('Average L2 Loss')
-    plt.title('Testing Set Reconstruction Loss Per Morphology')
-    if len(trainingIdxs) > 1:
-        plt.legend(trainingIdxs)
-    plt.savefig('time-contrastive-losses.jpg')
-
 
 for morphIdx in trainingIdxs:
 
@@ -244,14 +230,21 @@ hidden_sizes = [256, 256]
 inputSize = 13
 stateSize = 64
 messageSize = 64
-latentSize = 2
+latentSize = 3
 numMessagePassingIterations = 6
 batch_size = 1024
 numBatchesPerTrainingStep = 1
 with_batch_norm = True
 
-maxSeqDist = 0.03
-minRandDist = 0.4
+contrastive_loss_weight = 0.5
+maxSeqDist = 0.4
+minRandDist = 1.33
+
+save_dir = 'models/new/3-latent-single-GNN-AutoEncoder/{}/{}-{}/'.format(idx, maxSeqDist, minRandDist)
+
+if not os.path.isdir(save_dir):
+    os.makedirs(save_dir, exist_ok=True)
+
 
 
 # # Encoder Networks 
@@ -269,17 +262,20 @@ decoderOutputNetwork = Network(stateSize, 7, hidden_sizes, with_batch_norm=with_
 decoderGNN = GraphNeuralNetwork(decoderInputNetwork, decoderMessageNetwork, decoderUpdateNetwork, decoderOutputNetwork, numMessagePassingIterations, encoder=False).to(device)
 
 # Optimizer
-lr = 5e-4
+lr = 1e-4
+weight_decay = 0
 optimizer = optim.Adam(itertools.chain(
                     encoderInputNetwork.parameters(), encoderMessageNetwork.parameters(), 
                     encoderUpdateNetwork.parameters(), encoderOutputNetwork.parameters(),
-                    decoderInputNetwork.parameters(), decoderMessageNetwork.parameters(), 
+                    decoderInputNetwork.parameters(), decoderMessageNetwork.parameters(),
                     decoderUpdateNetwork.parameters(), decoderOutputNetwork.parameters()),
-                    lr, weight_decay=0)
+                    lr, weight_decay=weight_decay)
 
 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=5e-6, threshold=1e-2)
 criterion = nn.MSELoss(reduction='none')
 
+print(encoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/' + str(idx) + '/0.35-1.33/' + 'encoderGNN.pt')))
+print(decoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/' + str(idx) + '/0.35-1.33/' + 'decoderGNN.pt')))
 
 numTrainingBatches = int(np.ceil(X_train[trainingIdxs[0]].shape[0] / batch_size))
 numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))
@@ -294,7 +290,7 @@ for morphIdx in trainingIdxs:
     testLosses[morphIdx] = []
     validLosses[morphIdx] = []
 
-for epoch in range(20):
+for epoch in range(15):
 
     print('Starting Epoch {}'.format(epoch))
     epoch_t0 = time.time()
@@ -307,6 +303,11 @@ for epoch in range(20):
     s = 0
     with torch.no_grad():
         for morphIdx in trainingIdxs:
+
+            epochTestSequentialDistances = []
+            epochTestRandomDistances = []
+            epochTestReconstructionLosses = []
+
             testLosses[morphIdx].append(np.zeros(3))
             for batch_ in range(0, numTestingBatches - 1):
                 encoder_graph = env[morphIdx].get_graph()._get_dgl_graph()
@@ -321,18 +322,25 @@ for epoch in range(20):
 
                 latent_states = encoderGNN(encoder_graph, encoderInput)
                 current_state_reconstruction = decoderGNN(decoder_graph, latent_states[:, 0:current_states.shape[0], :])
-                current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
+                # current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
 
-                autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7],
-                                             current_state_reconstruction).mean()
+                autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7], current_state_reconstruction)
+                epochTestReconstructionLosses.append(autoencoder_loss.mean(dim=0).detach().cpu())
+                autoencoder_loss = autoencoder_loss.mean()
+
                 # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-                sequential_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :]) ** 2).mean(dim=-1)
+                sequential_distances = torch.norm(latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :], p=2, dim=-1)
+                # sequential_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :]) ** 2).mean(dim=-1)
                 # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-                random_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :])).mean(dim=-1)
+                random_distances = torch.norm(latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :], p=2, dim=-1)
+                # random_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :]) ** 2).mean(dim=-1)
 
                 # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
                 contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
                 contrastive_loss_2 = torch.max(zeroTensor, minRandDist - random_distances)
+
+                epochTestSequentialDistances.append(sequential_distances.mean(dim=0).detach().cpu())
+                epochTestRandomDistances.append(random_distances.mean(dim=0).detach().cpu())
 
                 final_contrastive_loss = contrastive_loss_1 + contrastive_loss_2
                 # get 0-1 matrix which is True if entry is not 0
@@ -340,11 +348,37 @@ for epoch in range(20):
                 # Compute average over nonzero entries in batch, result will be scalar
                 final_contrastive_loss = final_contrastive_loss.sum() / mask.sum()
 
-                testLosses[morphIdx][-1][0] += autoencoder_loss.item() / numBatchesPerTrainingStep
-                testLosses[morphIdx][-1][1] += contrastive_loss_1.mean().detach().cpu() / numBatchesPerTrainingStep
-                testLosses[morphIdx][-1][2] += contrastive_loss_2.mean().detach().cpu() / numBatchesPerTrainingStep
+                testLosses[morphIdx][-1][0] += autoencoder_loss.item()
+                testLosses[morphIdx][-1][1] += contrastive_loss_1.mean().detach().cpu()
+                testLosses[morphIdx][-1][2] += contrastive_loss_2.mean().detach().cpu()
             testLosses[morphIdx][-1] /= numTestingBatches - 1
             s += testLosses[morphIdx][-1].mean()
+
+    epochTestReconstructionLosses = torch.stack(epochTestReconstructionLosses, dim=0)
+    epochTestReconstructionLosses = torch.log10(epochTestReconstructionLosses.view(epochTestReconstructionLosses.shape[0] * epochTestReconstructionLosses.shape[1], -1))
+    epochTestSequentialDistances = torch.flatten(torch.stack(epochTestSequentialDistances, dim=0))
+    epochTestRandomDistances = torch.flatten(torch.stack(epochTestRandomDistances, dim=0))
+
+    # plt.boxplot([epochTestSequentialDistances, epochTestRandomDistances])
+
+    fig = plt.figure()
+    plt.title('Time-Constrastive Distances')
+    labels = ['Sequential', 'Random']
+    plt.boxplot([epochTestSequentialDistances, epochTestRandomDistances], labels=labels)
+
+
+    fig.savefig(save_dir + 'distances-{}.png'.format(epoch))
+
+    fig = plt.figure()
+
+    plt.title('MSE Reconstruction Losses Per Dimension')
+    labels = ['Global ' + str(x) for x in np.arange(5)] + ['Local 0', 'Local 1']
+    plt.boxplot([epochTestReconstructionLosses[:, 0], epochTestReconstructionLosses[:, 1],
+                 epochTestReconstructionLosses[:, 2], epochTestReconstructionLosses[:, 3],
+                 epochTestReconstructionLosses[:, 4], epochTestReconstructionLosses[:, 5],
+                 epochTestReconstructionLosses[:, 6]], labels=labels)
+
+    fig.savefig(save_dir + 'reconstruction-{}.pdf'.format(epoch))
 
     lr_scheduler.step(s)
 
@@ -383,14 +417,17 @@ for epoch in range(20):
                 latent_states = encoderGNN(encoder_graph, encoderInput)
 
                 current_state_reconstruction = decoderGNN(decoder_graph, latent_states[:, 0:current_states.shape[0], :])
-                current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
+                # current_state_reconstruction[:, :, 0:5] = current_state_reconstruction[:, :, 0:5].mean(dim=0)
                 autoencoder_loss = criterion(encoder_graph.ndata['input'][:, 0:batch_size, :7],
                                              current_state_reconstruction).mean()
 
+
                 # Calculate 2-norm for positive/sequential samples over the data dimension - result is of dimension (nodes, batch_size)
-                sequential_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :]) ** 2).mean(dim=-1)
+                sequential_distances = torch.norm(latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :], p=2, dim=-1)
+                # sequential_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, batch_size:batch_size * 2, :]) ** 2).mean(dim=-1)
                 # Calculate 2-norm for negative/random samples over data dimension - result is of dimension (nodes, batch_size)
-                random_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :])).mean(dim=-1)
+                random_distances = torch.norm(latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :], p=2, dim=-1)
+                # random_distances = ((latent_states[:, 0:batch_size, :] - latent_states[:, 2 * batch_size: 3 * batch_size, :]) ** 2).mean(dim=-1)
                 # Calculate contrastive loss for each entry - result is of dimension (nodes, batch_size)
 
                 contrastive_loss_1 = torch.max(zeroTensor, sequential_distances - maxSeqDist)
@@ -406,7 +443,7 @@ for epoch in range(20):
                 trainLosses[morphIdx][-1][1] += contrastive_loss_1.mean().detach().cpu() / numBatchesPerTrainingStep
                 trainLosses[morphIdx][-1][2] += contrastive_loss_2.mean().detach().cpu() / numBatchesPerTrainingStep
 
-                stepLoss = autoencoder_loss + final_contrastive_loss
+                stepLoss = (1 - contrastive_loss_weight) * autoencoder_loss + contrastive_loss_weight * final_contrastive_loss
                 stepLoss /= (len(trainingIdxs) * numBatchesPerTrainingStep)
 
                 stepLoss.backward()
