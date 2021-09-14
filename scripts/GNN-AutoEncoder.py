@@ -233,14 +233,15 @@ messageSize = 64
 latentSize = 3
 numMessagePassingIterations = 6
 batch_size = 1024
-numBatchesPerTrainingStep = 1
+numBatchesPerTrainingStep = 3
 with_batch_norm = True
 
-contrastive_loss_weight = 0.5
+contrastive_loss_weight = 0.0
 maxSeqDist = 0.4
 minRandDist = 1.33
 
-save_dir = 'models/new/3-latent-single-GNN-AutoEncoder/{}/{}-{}/'.format(idx, maxSeqDist, minRandDist)
+# save_dir = 'models/new/3-latent-single-GNN-AutoEncoder/{}/{}-{}/'.format(idx, maxSeqDist, minRandDist)
+save_dir = 'models/new/3-latent-single-GNN-AutoEncoder/{}/no-contrastive/'.format(idx)
 
 if not os.path.isdir(save_dir):
     os.makedirs(save_dir, exist_ok=True)
@@ -262,7 +263,7 @@ decoderOutputNetwork = Network(stateSize, 7, hidden_sizes, with_batch_norm=with_
 decoderGNN = GraphNeuralNetwork(decoderInputNetwork, decoderMessageNetwork, decoderUpdateNetwork, decoderOutputNetwork, numMessagePassingIterations, encoder=False).to(device)
 
 # Optimizer
-lr = 1e-4
+lr = 5e-4
 weight_decay = 0
 optimizer = optim.Adam(itertools.chain(
                     encoderInputNetwork.parameters(), encoderMessageNetwork.parameters(), 
@@ -274,8 +275,8 @@ optimizer = optim.Adam(itertools.chain(
 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=5e-6, threshold=1e-2)
 criterion = nn.MSELoss(reduction='none')
 
-print(encoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/' + str(idx) + '/0.35-1.33/' + 'encoderGNN.pt')))
-print(decoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/' + str(idx) + '/0.35-1.33/' + 'decoderGNN.pt')))
+print(encoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/5/no-contrastive/encoderGNN.pt')))
+print(decoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/5/no-contrastive/decoderGNN.pt')))
 
 numTrainingBatches = int(np.ceil(X_train[trainingIdxs[0]].shape[0] / batch_size))
 numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))
@@ -378,7 +379,7 @@ for epoch in range(15):
                  epochTestReconstructionLosses[:, 4], epochTestReconstructionLosses[:, 5],
                  epochTestReconstructionLosses[:, 6]], labels=labels)
 
-    fig.savefig(save_dir + 'reconstruction-{}.pdf'.format(epoch))
+    fig.savefig(save_dir + 'reconstruction-{}.png'.format(epoch))
 
     lr_scheduler.step(s)
 
