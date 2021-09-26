@@ -425,7 +425,7 @@ decoderGNN = EncoderDecoderGNN(decoderInputNetwork, decoderMessageNetwork, decod
 encoderGNN.load_state_dict(torch.load(prefix + 'encoderGNN.pt'))
 decoderGNN.load_state_dict(torch.load(prefix + 'decoderGNN.pt'))
 
-prefix = 'models/GNN-InverseDynamics/inverseDynamics-multi-with-sigmoid/gnn.pt'
+prefix = 'models/inverseDynamics-multi-with-sigmoid/gnn.pt'
 inputSize = 20
 stateSize = 64
 messageSize = 64
@@ -447,11 +447,11 @@ env = HalfCheetahGraphEnv(None)
 env.set_morphology(idx)
 alpha_seq = 0.03
 gamma = 0.9
-H = 2
-R = 5
-batch_size = 1024
+H = 3
+R = 3
+batch_size = 8192
 num_trials = 5
-episode_steps = 2
+episode_steps = 500
 
 with torch.no_grad():
 

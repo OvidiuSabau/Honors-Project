@@ -70,8 +70,8 @@ def save_weights_and_graph(save_dir):
     np.save(save_dir +'/testLosses.npy', np.stack(testLosses))
 
 
-idx = 3
-save_dir = 'models/MLP-inverseDynamics/contrastive/' + str(idx) + '/'
+idx = 0
+save_dir = 'models/MLP-AutoEncoder/contrastive/' + str(idx) + '/'
 
 prefix = 'datasets/' + str(idx) + '/'
 states = np.load(prefix + 'states_array.npy')
