@@ -1,8 +1,10 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import torch.autograd
 import time
 import torch.optim as optim
 import torch.nn as nn
+
 if torch.cuda.is_available():
     device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc. 
     print("Running on the GPU")
@@ -14,59 +16,47 @@ from graphenvs import HalfCheetahGraphEnv
 import itertools
 import os
 
+
 class Network(nn.Module):
     def __init__(
-        self,
-        input_size,
-        output_size,
-        hidden_sizes,
-        with_batch_norm=False,
-        activation=None,
-        with_sigmoid=False
+            self,
+            input_size,
+            output_size,
+            hidden_sizes,
+            with_batch_norm=False,
+            activation=None
     ):
         super(Network, self).__init__()
         self.hidden_sizes = hidden_sizes
         self.input_size = input_size
         self.output_size = output_size
+
         self.layers = nn.ModuleList()
-        self.with_sigmoid = with_sigmoid
 
         self.layers.append(nn.Linear(self.input_size, hidden_sizes[0]))
         if with_batch_norm:
             self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[0])))
         self.layers.append(nn.ReLU())
-        
+
         for i in range(len(hidden_sizes) - 1):
-            self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
+            self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i + 1]))
             if with_batch_norm:
-                self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[i+1])))
+                self.layers.append(nn.LayerNorm(normalized_shape=(hidden_sizes[i + 1])))
             self.layers.append(nn.ReLU())
-        
-        
-        self.outputLayer = nn.Linear(hidden_sizes[-1], self.output_size)
-        self.outputActivation = activation
-        
-        
-        if with_sigmoid:
-            self.sigmoidLayer = nn.Linear(hidden_sizes[-1], 1)
-            
+
+        self.layers.append(nn.Linear(hidden_sizes[len(hidden_sizes) - 1], self.output_size))
+
+        if activation is not None:
+            self.layers.append(activation())
+
     def forward(self, x):
         out = x
-        
+
         for layer in self.layers:
             out = layer(out)
-        
-        final_output = self.outputLayer(out)
-        
-        if self.outputActivation is not None:
-            final_output = self.outputActivation(final_output)
-        
-        if self.with_sigmoid:
-            
-            sigmoid_output = self.sigmoidLayer(out).sigmoid()
-            final_output = torch.cat((final_output, sigmoid_output), dim=-1)
-            
-        return final_output
+
+        return out
+
 
 class GraphNeuralNetwork(nn.Module):
     def __init__(
@@ -121,12 +111,9 @@ class GraphNeuralNetwork(nn.Module):
         graph.apply_nodes(self.outputFunction)
         
         output = graph.ndata['output']
-        output = torch.transpose(output, dim0=0, dim1=1)
-        
-        actions = output[:, :, 0].squeeze(-1)
-        sigmoids = output[:, :, 1].squeeze(-1).mean(-1)
-                
-        return actions, sigmoids
+        output = torch.transpose(output, dim0=0, dim1=1).squeeze(-1)
+
+        return output
     
     def update_states_in_graph(self, graph, state):
         if len(state.shape) == 1:
@@ -168,18 +155,37 @@ def save_weights_and_graph(save_dir):
     torch.save(gnn.state_dict(), save_dir + 'gnn.pt')
 
     for morphIdx in trainingIdxs:
-        np.save(save_dir + str(morphIdx) + '-actionTrainLosses.npy', np.stack(actionTrainLosses[morphIdx]))
-        np.save(save_dir + str(morphIdx) + '-sigmoidTrainLosses.npy', np.stack(sigmoidTrainLosses[morphIdx]))
-        np.save(save_dir + str(morphIdx) + '-actionTestLosses.npy', np.stack(actionTestLosses[morphIdx]))
-        np.save(save_dir + str(morphIdx) + '-sigmoidTestLosses.npy', np.stack(sigmoidTestLosses[morphIdx]))
 
+        trainingLosses = np.stack(actionTrainLosses[morphIdx])
+        testingLosses = np.stack(actionTestLosses[morphIdx])
 
-# idx = 5
-# trainingIdxs = [idx]
+        np.save(save_dir + str(morphIdx) + '-actionTrainLosses.npy', trainingLosses)
+        np.save(save_dir + str(morphIdx) + '-actionTestLosses.npy', testingLosses)
 
-trainingIdxs = [0,1,2,3,4,5]
+        try:
+            plt.close(fig)
+        except:
+            pass
 
-save_dir = 'models/inverseDynamics-multi-with-sigmoid/'
+        fig = plt.figure()
+
+        num_epochs = testingLosses.shape[0]
+        num_batches_per_epoch = trainingLosses.shape[0] // num_epochs
+        trainingLosses = trainingLosses.reshape(num_epochs, num_batches_per_epoch, trainingLosses.shape[1])
+        trainingLosses = trainingLosses.mean(1)
+
+        for node in range(trainingLosses.shape[1]):
+            plt.plot(np.arange(trainingLosses.shape[0]), np.log10(trainingLosses[:, node]), c='blue')
+            plt.plot(np.arange(trainingLosses.shape[0]), np.log10(testingLosses[:, node]), c='red')
+            plt.legend(['Training', 'Testing'])
+        fig.savefig(save_dir + str(morphIdx) + 'losses-graph.png')
+
+idx = 5
+trainingIdxs = [idx]
+
+# trainingIdxs = [0,1,2,3,4,5]
+
+save_dir = 'models/new/inverseDynamics-single/' + str(idx) + '-attempt-5/'
 # save_dir = 'models/inverseDynamics-with-sigmoid/' + str(idx) + '/'
 
 states = {}
@@ -209,15 +215,17 @@ Y_test = {}
 Y_train = {}
 
 for morphIdx in trainingIdxs:
-    X = np.concatenate((states[morphIdx], next_states[morphIdx]), -1)
-    Y = actions[morphIdx]
+    # X = torch.from_numpy(np.concatenate((states[morphIdx], next_states[morphIdx]), axis=-1)).to(torch.float32)
+    X = torch.from_numpy(states[morphIdx]).repeat(1, 2).to(torch.float32)
+    X[:, X.shape[1] // 2:] -= next_states[morphIdx]
+    Y = torch.from_numpy(actions[morphIdx]).to(torch.float32)
     permutation = np.random.permutation(X.shape[0])
     X = X[permutation]
-    X_test[morphIdx] = torch.from_numpy(X[:100000]).float()
-    X_train[morphIdx] = torch.from_numpy(X[100000:]).float()
+    X_test[morphIdx] = X[:100000]
+    X_train[morphIdx] = X[100000:]
     Y = Y[permutation]
-    Y_test[morphIdx] = torch.from_numpy(Y[:100000]).float()
-    Y_train[morphIdx] = torch.from_numpy(Y[100000:]).float()
+    Y_test[morphIdx] = Y[:100000]
+    Y_train[morphIdx] = Y[100000:]
 
 hidden_sizes = [256, 256]
 
@@ -228,25 +236,21 @@ outputSize = 1
 numMessagePassingIterations = 6
 batch_size = 2048
 with_batch_norm = True
-numBatchesPerTrainingStep = 1
+numBatchesPerTrainingStep = 8
 
 inputNetwork = Network(inputSize, stateSize, hidden_sizes, with_batch_norm)
-messageNetwork = Network(stateSize + inputSize + 1, messageSize, hidden_sizes, with_batch_norm, nn.Tanh())
+messageNetwork = Network(stateSize + inputSize + 1, messageSize, hidden_sizes, with_batch_norm, nn.Tanh)
 updateNetwork = Network(stateSize + messageSize, stateSize, hidden_sizes, with_batch_norm)
-outputNetwork = Network(stateSize, outputSize, hidden_sizes, with_batch_norm, nn.Tanh(), with_sigmoid=True)
+outputNetwork = Network(stateSize, outputSize, hidden_sizes, with_batch_norm, nn.Tanh)
 
 gnn = GraphNeuralNetwork(inputNetwork, messageNetwork, updateNetwork, outputNetwork, numMessagePassingIterations).to(device)
 
-lr = 5e-4
-optimizer = optim.Adam(itertools.chain(inputNetwork.parameters(), messageNetwork.parameters(), updateNetwork.parameters(), outputNetwork.parameters())
-                       , lr=lr, weight_decay=0)
+print(gnn.load_state_dict(torch.load('models/new/inverseDynamics-single/5-attempt-2/gnn.pt')))
+lr = 1e-5
+optimizer = optim.Adam(itertools.chain(inputNetwork.parameters(), messageNetwork.parameters(), updateNetwork.parameters(), outputNetwork.parameters()), lr=lr, weight_decay=0)
 
-lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=5e-6, threshold=1e-2)
+lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=5e-6, threshold=1e-3)
 l2Loss = nn.MSELoss(reduction='none')
-binaryLoss = nn.BCELoss()
-zeroTensor = torch.zeros([batch_size]).to(device)
-oneTensor = torch.ones([batch_size]).to(device)
-binaryLossWeighing = 1e-3
 
 numTrainingBatches = int(np.ceil(X_train[trainingIdxs[0]].shape[0] / batch_size))
 numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))
@@ -254,16 +258,11 @@ numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))
 actionTrainLosses = {}
 actionTestLosses = {}
 
-sigmoidTrainLosses = {}
-sigmoidTestLosses = {}
 for morphIdx in trainingIdxs:
     actionTrainLosses[morphIdx] = []
     actionTestLosses[morphIdx] = []
-    
-    sigmoidTrainLosses[morphIdx] = []
-    sigmoidTestLosses[morphIdx] = []
 
-for epoch in range(15):
+for epoch in range(200):
     
     print('Starting Epoch {}'.format(epoch))
     epoch_t0 = time.time()
@@ -278,8 +277,7 @@ for epoch in range(15):
         for morphIdx in trainingIdxs:
             numNodes = ((X_train[morphIdx].shape[1] // 2) - 5) // 2
             actionTestLosses[morphIdx].append(torch.zeros(numNodes))
-            sigmoidTestLosses[morphIdx].append(torch.zeros(4))
-            for batch_ in range(0, numTestingBatches-1):
+            for batch_ in range(numTestingBatches):
 
                 g1 = env[morphIdx].get_graph()._get_dgl_graph()
                 g2 = env[morphIdx].get_graph()._get_dgl_graph()
@@ -287,46 +285,30 @@ for epoch in range(15):
                 x = X_test[morphIdx][batch_ * batch_size:(batch_+1)*batch_size].to(device)
                 y = Y_test[morphIdx][batch_ * batch_size:(batch_+1)*batch_size].to(device)
                 
-                predicted_actions, predicted_sigmoids = gnn(g1, x)
+                predicted_actions = gnn(g1, x)
                 
                 actionsLoss = l2Loss(predicted_actions, y)
-                sigmoidLoss = binaryLossWeighing * binaryLoss(predicted_sigmoids, oneTensor)
-                
+
                 actionTestLosses[morphIdx][-1] += actionsLoss.mean(dim=0).cpu().detach()
-                sigmoidTestLosses[morphIdx][-1][0] += sigmoidLoss.item()
-                sigmoidTestLosses[morphIdx][-1][1] += torch.eq(oneTensor, torch.round(predicted_sigmoids)).sum().item() / float(batch_size)
 
-                totalForwardLoss = actionsLoss.mean() + sigmoidLoss
-
-                xHalfLength = int(x.shape[-1] / 2)
-                predicted_actions, predicted_sigmoids = gnn(g2, torch.cat((x[:, xHalfLength:], x[:, :xHalfLength]), -1))
-                
-                backwardLoss = binaryLossWeighing * binaryLoss(predicted_sigmoids, zeroTensor)
-
-                sigmoidTestLosses[morphIdx][-1][2] += backwardLoss.item()
-                sigmoidTestLosses[morphIdx][-1][3] += torch.eq(zeroTensor, torch.round(predicted_sigmoids)).sum().item() / float(batch_size)
-
-            actionTestLosses[morphIdx][-1] /= numTrainingBatches-1
-            sigmoidTestLosses[morphIdx][-1] /= numTrainingBatches-1
-
+            actionTestLosses[morphIdx][-1] /= numTestingBatches
     s = 0
     for morphIdx in trainingIdxs:
-        print('Test Idx {} | Actions Loss {} \nSigmoid L&A {}\n'.format(
-            morphIdx, np.round(actionTestLosses[morphIdx][-1], decimals=3), np.round(sigmoidTestLosses[morphIdx][-1], decimals=3)))
+        print('Test Idx {} | Actions Loss {} \n'.format(
+            morphIdx, np.round(actionTestLosses[morphIdx][-1], decimals=3)))
         s += actionTestLosses[morphIdx][-1].mean()
 
     lr_scheduler.step(s)
 
-    for batch in range(0, numTrainingBatches-1, numBatchesPerTrainingStep):
+    for batch in range(0, numTrainingBatches, numBatchesPerTrainingStep):
                 
         t0 = time.time()
         
         for morphIdx in trainingIdxs:
             numNodes = ((X_train[morphIdx].shape[1] // 2) - 5) // 2
             actionTrainLosses[morphIdx].append(torch.zeros(numNodes))
-            sigmoidTrainLosses[morphIdx].append(torch.zeros(4))
-        
-        optimizer.zero_grad()       
+
+        optimizer.zero_grad()
         
         for batchOffset in range(numBatchesPerTrainingStep):
 
@@ -341,40 +323,22 @@ for epoch in range(15):
                 x = X_train[morphIdx][(batch+batchOffset) * batch_size:(batch+batchOffset+1)*batch_size].to(device)
                 y = Y_train[morphIdx][(batch+batchOffset) * batch_size:(batch+batchOffset+1)*batch_size].to(device)
                 
-                predicted_actions, predicted_sigmoids = gnn(g1, x)
+                predicted_actions = gnn(g1, x)
                 
-                actionsLoss = l2Loss(predicted_actions, y)
-                sigmoidLoss = binaryLossWeighing * binaryLoss(predicted_sigmoids, oneTensor)
-                
-                actionTrainLosses[morphIdx][-1] += actionsLoss.mean(dim=0).cpu().detach()
-                sigmoidTrainLosses[morphIdx][-1][0] += sigmoidLoss.item()
-                sigmoidTrainLosses[morphIdx][-1][1] += torch.eq(oneTensor, torch.round(predicted_sigmoids)).sum().item() / float(batch_size)
+                actionsLoss = l2Loss(predicted_actions, y).mean(dim=0)
+                actionTrainLosses[morphIdx][-1] += actionsLoss.cpu().detach() / numBatchesPerTrainingStep
 
-                totalForwardLoss = actionsLoss.mean() + sigmoidLoss
-                totalForwardLoss.backward()
-
-                xHalfLength = int(x.shape[-1] / 2)
-                predicted_actions, predicted_sigmoids = gnn(g2, torch.cat((x[:, xHalfLength:], x[:, :xHalfLength]), -1))
-                
-                backwardLoss = binaryLossWeighing * binaryLoss(predicted_sigmoids, zeroTensor)
-                backwardLoss.backward()
-
-                sigmoidTrainLosses[morphIdx][-1][2] += backwardLoss.item()
-                sigmoidTrainLosses[morphIdx][-1][3] += torch.eq(zeroTensor, torch.round(predicted_sigmoids)).sum().item() / float(batch_size)
-        
-        for morphIdx in trainingIdxs:
-            actionTestLosses[morphIdx][-1] /= numBatchesPerTrainingStep
-            sigmoidTestLosses[morphIdx][-1] /= numBatchesPerTrainingStep
+                actionsLoss = actionsLoss.mean() / numBatchesPerTrainingStep
+                actionsLoss.backward()
 
         optimizer.step()        
         
-        if batch % 200 == 0:
+        if batch % 100 == 0:
             print('Batch {} in {}s'.format(batch, np.round(time.time() - t0, decimals=1)))
             for morphIdx in trainingIdxs:
-                print('Train Idx {} | Actions Loss {} \nSigmoid L&A {}\n'.format(
-                    morphIdx, np.round(actionTrainLosses[morphIdx][-1], decimals=3), np.round(sigmoidTrainLosses[morphIdx][-1], decimals=3)))
+                print('Train Idx {} | Actions Loss {} \n'.format(
+                    morphIdx, np.round(actionTrainLosses[morphIdx][-1], decimals=3)))
 
         t_final = time.time() - t0
-
     print('Epoch {} finished in {}'.format(epoch, np.round(time.time() - epoch_t0, decimals=1)))
     save_weights_and_graph(save_dir)

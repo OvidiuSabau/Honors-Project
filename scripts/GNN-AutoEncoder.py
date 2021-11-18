@@ -171,13 +171,8 @@ next_states = {}
 dones = {}
 env = {}
 
-idx = 5
+idx = 4
 trainingIdxs = [idx]
-
-# trainingIdxs = [0]
-
-
-# save_dir = 'models/new-multi-GNN-2-latent-contrastive/'
 
 def save_weights_and_graph(save_dir):
 
@@ -190,7 +185,7 @@ def save_weights_and_graph(save_dir):
 
 for morphIdx in trainingIdxs:
 
-    prefix = 'datasets/{}/'.format(morphIdx)
+    prefix = 'datasets-old-run/{}/'.format(morphIdx)
     
     states[morphIdx] = np.load(prefix + 'states_array.npy')
     actions[morphIdx] = np.load(prefix + 'actions_array.npy')
@@ -236,17 +231,15 @@ batch_size = 1024
 numBatchesPerTrainingStep = 3
 with_batch_norm = True
 
-contrastive_loss_weight = 0.0
+contrastive_loss_weight = 0.5
 maxSeqDist = 0.4
 minRandDist = 1.33
 
 # save_dir = 'models/new/3-latent-single-GNN-AutoEncoder/{}/{}-{}/'.format(idx, maxSeqDist, minRandDist)
-save_dir = 'models/new/3-latent-single-GNN-AutoEncoder/{}/no-contrastive/'.format(idx)
+save_dir = 'models/new/3-latent-single-GNN-AutoEncoder/{}/0.4-1.33/'.format(idx)
 
 if not os.path.isdir(save_dir):
     os.makedirs(save_dir, exist_ok=True)
-
-
 
 # # Encoder Networks 
 encoderInputNetwork = Network(inputSize, stateSize, hidden_sizes, with_batch_norm=with_batch_norm)
@@ -275,8 +268,8 @@ optimizer = optim.Adam(itertools.chain(
 lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=0, verbose=True, min_lr=5e-6, threshold=1e-2)
 criterion = nn.MSELoss(reduction='none')
 
-print(encoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/5/no-contrastive/encoderGNN.pt')))
-print(decoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/5/no-contrastive/decoderGNN.pt')))
+# print(encoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/5/no-contrastive/encoderGNN.pt')))
+# print(decoderGNN.load_state_dict(torch.load('models/new/3-latent-single-GNN-AutoEncoder/5/no-contrastive/decoderGNN.pt')))
 
 numTrainingBatches = int(np.ceil(X_train[trainingIdxs[0]].shape[0] / batch_size))
 numTestingBatches = int(np.ceil(X_test[trainingIdxs[0]].shape[0] / batch_size))
